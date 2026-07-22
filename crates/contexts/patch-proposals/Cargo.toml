@@ -1,0 +1,20 @@
+[package]
+name = "cauterizer-patch-proposals"
+description = "Patch Proposals bounded context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "domain"
+context = "patch-proposals"
+
+[dependencies]
+cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+
+[lints]
+workspace = true
+

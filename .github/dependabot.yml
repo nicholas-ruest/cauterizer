@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Dependabot opens reviewed action-pin updates. The resulting workflow must retain
+  # a full commit SHA; scripts/ci/verify-action-pins.sh rejects moving tags.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:47"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - supply-chain
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:17"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+

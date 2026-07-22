@@ -1,0 +1,48 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/architecture-tests",
+    "crates/cauterizer-api",
+    "crates/cauterizer-cli",
+    "crates/cauterizer-contracts",
+    "crates/cauterizer-infrastructure",
+    "crates/cauterizer-syntax",
+    "crates/cauterizer-worker",
+    "crates/contexts/advisory-intake",
+    "crates/contexts/asset-portfolio",
+    "crates/contexts/commercial-entitlements",
+    "crates/contexts/evidence",
+    "crates/contexts/external-actions",
+    "crates/contexts/integration-management",
+    "crates/contexts/isolated-execution",
+    "crates/contexts/organization-access",
+    "crates/contexts/patch-proposals",
+    "crates/contexts/remediation-runs",
+    "crates/contexts/verification",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/nicholas-ruest/cauterizer"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+multiple_crate_versions = "allow"
+cargo_common_metadata = "allow"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"

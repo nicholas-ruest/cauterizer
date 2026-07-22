@@ -1,0 +1,15 @@
+[package]
+name = "cauterizer-syntax"
+description = "Syntax-only primitives shared across Cauterizer bounded contexts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "shared"
+
+[lints]
+workspace = true

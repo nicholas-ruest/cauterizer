@@ -1,0 +1,19 @@
+[package]
+name = "cauterizer-worker"
+description = "Ephemeral Cauterizer worker supervisor process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "binary"
+
+[dependencies]
+cauterizer-contracts = { version = "0.1.0", path = "../cauterizer-contracts" }
+
+[lints]
+workspace = true
+

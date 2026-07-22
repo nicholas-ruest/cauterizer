@@ -1,0 +1,16 @@
+[package]
+name = "architecture-tests"
+description = "Workspace dependency-boundary conformance tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "test"
+
+[lints]
+workspace = true
+

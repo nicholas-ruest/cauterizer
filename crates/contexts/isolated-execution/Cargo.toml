@@ -1,0 +1,20 @@
+[package]
+name = "cauterizer-isolated-execution"
+description = "Isolated Execution bounded context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "domain"
+context = "isolated-execution"
+
+[dependencies]
+cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+
+[lints]
+workspace = true
+
