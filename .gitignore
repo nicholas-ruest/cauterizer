@@ -1,0 +1,10 @@
+# Ruflo and Claude tooling
+.agents/
+.claude/
+.claude-flow/
+.plans/
+.swarm/
+.mcp.json
+CLAUDE.md
+ruvector.db
+skills-lock.json
