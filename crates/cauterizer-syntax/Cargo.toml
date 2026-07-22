@@ -11,5 +11,13 @@ publish.workspace = true
 [package.metadata.cauterizer]
 layer = "shared"
 
+[dependencies]
+schemars.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_jcs.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
 [lints]
 workspace = true

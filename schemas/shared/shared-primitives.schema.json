@@ -1,0 +1,578 @@
+{
+  "$defs": {
+    "ActionName": {
+      "description": "A syntactically valid action name such as `runs.read`.",
+      "type": "string"
+    },
+    "ActorId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated human actor syntax reference."
+    },
+    "AggregateSequence": {
+      "description": "Monotonically increasing one-based sequence of an aggregate event.",
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "AuthorizationRequestContext": {
+      "additionalProperties": false,
+      "description": "Syntax-only input to an authorization policy.\n\nPossessing this value does not imply that access was granted.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ActionName"
+        },
+        "actor": {
+          "$ref": "#/$defs/IdentityRef"
+        },
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId"
+        },
+        "purpose": {
+          "$ref": "#/$defs/Purpose"
+        },
+        "resource": {
+          "$ref": "#/$defs/ResourceRef"
+        }
+      },
+      "required": [
+        "organization_id",
+        "actor",
+        "action",
+        "resource",
+        "purpose"
+      ],
+      "type": "object"
+    },
+    "BoundedDuration": {
+      "description": "A non-zero, millisecond-precision duration bounded for platform contracts.\n\nThe JSON representation is an integer number of milliseconds. Domain code\nmay impose a tighter limit, but no shared contract can exceed seven days.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "CausationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Reference to the command or event that caused another fact."
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "CorrelationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Trace-safe correlation reference spanning one logical request."
+    },
+    "Cursor": {
+      "description": "An opaque URL-safe pagination cursor.",
+      "type": "string"
+    },
+    "DataClass": {
+      "description": "Platform-wide data sensitivity labels ordered from least to most sensitive.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Information approved for public disclosure.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Non-public operational metadata with low disclosure impact.",
+          "type": "string"
+        },
+        {
+          "const": "confidential",
+          "description": "Organization-private business or source information.",
+          "type": "string"
+        },
+        {
+          "const": "restricted_security",
+          "description": "Security-sensitive data requiring the strongest payload controls.",
+          "type": "string"
+        }
+      ]
+    },
+    "IdempotencyKey": {
+      "description": "A bounded client-supplied key used to make one command replay-safe.\n\nKeys are opaque and case-sensitive. The allowed URL-safe alphabet avoids\naccidental control characters, whitespace normalization, and log injection.",
+      "type": "string"
+    },
+    "IdentityRef": {
+      "description": "A syntax-level authenticated principal reference.",
+      "oneOf": [
+        {
+          "description": "A human identity reference.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ActorId"
+            },
+            "kind": {
+              "const": "human",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A non-human workload identity reference.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ServicePrincipalId"
+            },
+            "kind": {
+              "const": "service",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "Page": {
+      "additionalProperties": false,
+      "description": "A cursor-paginated collection response.",
+      "properties": {
+        "items": {
+          "description": "Items in deterministic server-selected order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Cursor for the next page, absent at the end."
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "ProblemDetails": {
+      "description": "Stable, bounded RFC 9457-style problem information.",
+      "properties": {
+        "detail": {
+          "description": "Optional bounded safe detail; never a stack trace or sensitive payload.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Stable machine-readable reason code.",
+          "type": "string"
+        },
+        "status": {
+          "description": "HTTP-compatible numeric status.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "title": {
+          "description": "Short human-readable title.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Stable URI identifying the problem class.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "status",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Purpose": {
+      "description": "A bounded, audit-safe statement of why access is requested.",
+      "type": "string"
+    },
+    "RegionCode": {
+      "description": "An opaque deployment region code with strict portable syntax.",
+      "type": "string"
+    },
+    "ResourceRef": {
+      "description": "An opaque, bounded resource reference interpreted by an owning context.",
+      "type": "string"
+    },
+    "ResultEnvelope": {
+      "additionalProperties": false,
+      "description": "A success envelope with optional non-sensitive metadata.",
+      "properties": {
+        "data": {
+          "description": "Successful response value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "RetentionMetadata": {
+      "description": "Retention and residency metadata carried with classified descriptors.",
+      "properties": {
+        "legal_hold": {
+          "type": "boolean"
+        },
+        "region": {
+          "$ref": "#/$defs/RegionCode"
+        },
+        "retention_days": {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "region",
+        "retention_days",
+        "legal_hold"
+      ],
+      "type": "object"
+    },
+    "SchemaEnvelope": {
+      "additionalProperties": false,
+      "description": "The syntax-level envelope for every published command, event, and document.",
+      "properties": {
+        "payload": {
+          "description": "Context-owned content. The shared kernel assigns it no domain meaning.",
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/$defs/SchemaName",
+          "description": "Reverse-DNS contract name."
+        },
+        "version": {
+          "$ref": "#/$defs/SchemaVersion",
+          "description": "Semantic contract version."
+        }
+      },
+      "required": [
+        "schema",
+        "version",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "SchemaName": {
+      "description": "A reverse-DNS schema name owned by a Cauterizer bounded context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "SensitiveRedacted": {
+      "type": "string"
+    },
+    "ServicePrincipalId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated workload/service-principal syntax reference."
+    },
+    "Sha256Digest": {
+      "description": "A canonical `sha256:<lowercase-hex>` content digest.",
+      "type": "string"
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Aggregate used only to make every public wire primitive reachable from one\nstable schema document. Optional fields avoid implying domain requirements.",
+  "properties": {
+    "action_name": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActionName"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "actor_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActorId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "aggregate_sequence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AggregateSequence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "authorization_request_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AuthorizationRequestContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "bounded_duration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BoundedDuration"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "causation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CausationId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "context_qualified_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContextQualifiedId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Cursor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "data_class": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DataClass"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "identity_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdentityRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "organization_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OrganizationId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "problem_details": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProblemDetails"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "purpose": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Purpose"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "region_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RegionCode"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "resource_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResourceRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retention_metadata": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RetentionMetadata"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_name": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SchemaName"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_version": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sensitive_string": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SensitiveRedacted"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "service_principal_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ServicePrincipalId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sha256_digest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "string_page": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Page"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "string_result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResultEnvelope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "string_schema_envelope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SchemaEnvelope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "utc_instant": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UtcInstant"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "title": "SharedPrimitiveSchemaSurface",
+  "type": "object"
+}
