@@ -410,6 +410,7 @@ fn validate_opaque(value: &str) -> Result<(), IdentifierError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     const OPAQUE: &str = "01j4z3y6ab8cdef0";
 
@@ -483,5 +484,19 @@ mod tests {
                 .checked_next()
                 .is_none()
         );
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_oversized_identifiers_are_rejected(extra in ".{97,512}") {
+            prop_assert!(extra.parse::<ContextQualifiedId>().is_err());
+        }
+
+        #[test]
+        fn arbitrary_valid_opaque_values_round_trip(opaque in "[a-z0-9]{8,64}") {
+            let id = ContextQualifiedId::new("property", &opaque).expect("generated valid ID");
+            let reparsed: ContextQualifiedId = id.as_str().parse().expect("round trip");
+            prop_assert_eq!(reparsed, id);
+        }
     }
 }

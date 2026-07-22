@@ -6,8 +6,68 @@ use core::str::FromStr;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Deserializer, Serialize, de};
+use serde_json::Value;
 
 const NAMESPACE_PREFIX: &str = "dev.cauterizer.";
+
+/// Security-aware classification of a JSON Schema revision.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SchemaChange {
+    /// The schemas are structurally identical.
+    Identical,
+    /// Only optional object properties were added without weakening validation.
+    Additive,
+    /// Validation or security semantics changed and require a new major version.
+    SecurityCriticalBreaking,
+}
+
+/// Classifies a checked-in JSON Schema revision conservatively.
+///
+/// Only adding optional properties to otherwise identical object schemas is
+/// considered additive. Removed/required properties, type changes, relaxed
+/// `additionalProperties`, enum changes, or any unrecognized structural change
+/// are security-critical breaking changes.
+#[must_use]
+pub fn classify_schema_change(previous: &Value, next: &Value) -> SchemaChange {
+    if previous == next {
+        return SchemaChange::Identical;
+    }
+    let (Some(old), Some(new)) = (previous.as_object(), next.as_object()) else {
+        return SchemaChange::SecurityCriticalBreaking;
+    };
+    let old_properties = old.get("properties").and_then(Value::as_object);
+    let new_properties = new.get("properties").and_then(Value::as_object);
+    let Some((old_properties, new_properties)) = old_properties.zip(new_properties) else {
+        return SchemaChange::SecurityCriticalBreaking;
+    };
+    if old_properties
+        .iter()
+        .any(|(name, schema)| new_properties.get(name) != Some(schema))
+    {
+        return SchemaChange::SecurityCriticalBreaking;
+    }
+    let old_required = old
+        .get("required")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(vec![]));
+    let new_required = new
+        .get("required")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(vec![]));
+    if old_required != new_required {
+        return SchemaChange::SecurityCriticalBreaking;
+    }
+    let mut normalized = new.clone();
+    normalized.insert("properties".into(), Value::Object(old_properties.clone()));
+    if &normalized != old {
+        return SchemaChange::SecurityCriticalBreaking;
+    }
+    if new_properties.len() > old_properties.len() {
+        SchemaChange::Additive
+    } else {
+        SchemaChange::SecurityCriticalBreaking
+    }
+}
 
 /// A reverse-DNS schema name owned by a Cauterizer bounded context.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, JsonSchema)]
@@ -229,6 +289,7 @@ impl std::error::Error for SchemaSyntaxError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn validates_names_and_versions() {
@@ -290,5 +351,52 @@ mod tests {
             ),
             Err(SchemaSyntaxError::UnexpectedName)
         );
+    }
+
+    #[test]
+    fn schema_diff_distinguishes_additive_from_security_breaking() {
+        let old = serde_json::json!({
+            "type": "object", "additionalProperties": false,
+            "properties": {"id": {"type": "string"}}, "required": ["id"]
+        });
+        let additive = serde_json::json!({
+            "type": "object", "additionalProperties": false,
+            "properties": {"id": {"type": "string"}, "label": {"type": "string"}},
+            "required": ["id"]
+        });
+        let weakened = serde_json::json!({
+            "type": "object", "additionalProperties": true,
+            "properties": {"id": {"type": "string"}}, "required": ["id"]
+        });
+        assert_eq!(classify_schema_change(&old, &old), SchemaChange::Identical);
+        assert_eq!(
+            classify_schema_change(&old, &additive),
+            SchemaChange::Additive
+        );
+        assert_eq!(
+            classify_schema_change(&old, &weakened),
+            SchemaChange::SecurityCriticalBreaking
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn schema_names_reject_arbitrary_oversized_suffixes(extra in ".{181,512}") {
+            let candidate = format!("{NAMESPACE_PREFIX}{extra}");
+            prop_assert_eq!(SchemaName::parse(candidate), Err(SchemaSyntaxError::InvalidName));
+        }
+
+        #[test]
+        fn optional_property_addition_is_always_additive(name in "[a-z][a-z0-9]{0,20}") {
+            prop_assume!(name != "id");
+            let old = serde_json::json!({
+                "type": "object", "additionalProperties": false,
+                "properties": {"id": {"type": "string"}}, "required": ["id"]
+            });
+            let mut new = old.clone();
+            new["properties"].as_object_mut().expect("object")
+                .insert(name, serde_json::json!({"type": "string"}));
+            prop_assert_eq!(classify_schema_change(&old, &new), SchemaChange::Additive);
+        }
     }
 }
