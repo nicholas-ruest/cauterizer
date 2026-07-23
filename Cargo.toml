@@ -4,6 +4,7 @@ members = [
     "crates/architecture-tests",
     "crates/adapters/asset-portfolio-postgres",
     "crates/adapters/advisory-intake-artifacts",
+    "crates/adapters/remediation-runs-postgres",
     "crates/cauterizer-api",
     "crates/cauterizer-cli",
     "crates/cauterizer-contracts",

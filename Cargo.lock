@@ -265,6 +265,21 @@ name = "cauterizer-remediation-runs"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cauterizer-remediation-runs-postgres"
+version = "0.1.0"
+dependencies = [
+ "cauterizer-infrastructure",
+ "cauterizer-remediation-runs",
+ "cauterizer-syntax",
+ "serde_json",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]

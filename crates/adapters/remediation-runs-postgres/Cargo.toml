@@ -1,0 +1,26 @@
+[package]
+name = "cauterizer-remediation-runs-postgres"
+description = "PostgreSQL adapter for durable Remediation Runs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "infrastructure"
+context = "remediation-runs"
+
+[dependencies]
+cauterizer-remediation-runs = { version = "0.1.0", path = "../../contexts/remediation-runs" }
+cauterizer-infrastructure = { version = "0.1.0", path = "../../cauterizer-infrastructure" }
+cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+serde_json.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
