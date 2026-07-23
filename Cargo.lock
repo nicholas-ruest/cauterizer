@@ -244,6 +244,7 @@ dependencies = [
  "serde",
  "serde_jcs",
  "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -304,6 +305,8 @@ name = "cauterizer-verification"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

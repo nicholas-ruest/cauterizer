@@ -17,6 +17,7 @@ cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
 schemars.workspace = true
 serde.workspace = true
 serde_jcs.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

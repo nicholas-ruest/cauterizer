@@ -4,6 +4,8 @@
 pub mod domain;
 /// Application use cases and owned ports.
 pub mod application {
+    /// Immutable, network-separated fixture acquisition.
+    pub mod acquisition;
     /// Fail-closed local execution admission.
     pub mod admission;
     /// Signed worker-protocol authentication boundary.
