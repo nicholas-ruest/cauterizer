@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 /// Authoritative supervisor termination category.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Termination {
@@ -55,11 +57,13 @@ impl std::error::Error for SupervisorError {}
 #[derive(Clone, Debug)]
 pub struct LocalPodmanSupervisor {
     binary: String,
+    cleanup_timeout: Duration,
 }
 impl Default for LocalPodmanSupervisor {
     fn default() -> Self {
         Self {
             binary: "podman".into(),
+            cleanup_timeout: CLEANUP_TIMEOUT,
         }
     }
 }
@@ -69,7 +73,13 @@ impl LocalPodmanSupervisor {
     pub fn new(binary: impl Into<String>) -> Self {
         Self {
             binary: binary.into(),
+            cleanup_timeout: CLEANUP_TIMEOUT,
         }
+    }
+    #[cfg(test)]
+    fn with_cleanup_timeout(mut self, timeout: Duration) -> Self {
+        self.cleanup_timeout = timeout;
+        self
     }
     /// Returns the exact daemonless OCI invocation after admission.
     #[must_use]
@@ -103,9 +113,9 @@ impl LocalPodmanSupervisor {
             "--user".into(),
             "65532:65532".into(),
         ];
-        for (key, value) in &r.environment_variables {
+        for (key, _) in &r.environment_variables {
             args.push("--env".into());
-            args.push(format!("{key}={value}"));
+            args.push(key.clone());
         }
         args.push(format!(
             "localhost/cauterizer-worker@{}",
@@ -124,13 +134,19 @@ impl LocalPodmanSupervisor {
     ) -> Result<SupervisorReceipt, SupervisorError> {
         let name = worker_name(execution.lease_id.as_str(), execution.request.job_class);
         let args = self.command_line(execution);
-        let mut child = Command::new(&self.binary)
+        let mut command = Command::new(&self.binary);
+        command
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|_| SupervisorError)?;
+            .stderr(Stdio::piped());
+        // Podman accepts `--env NAME` and reads the value from its own environment.
+        // Supplying the value through `Command::env` keeps it out of argv and the
+        // safely inspectable command-line representation.
+        for (key, value) in &execution.request.environment_variables {
+            command.env(key, value);
+        }
+        let mut child = command.spawn().map_err(|_| SupervisorError)?;
         let stdout = bounded_reader(
             child.stdout.take(),
             usize::try_from(execution.request.output.stdout_bytes).unwrap_or(usize::MAX),
@@ -162,19 +178,7 @@ impl LocalPodmanSupervisor {
                 Err(_) => break Termination::WorkerLost,
             }
         };
-        let cleanup = Command::new(&self.binary)
-            .args(["rm", "--force", &name])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_or(CleanupOutcome::Failed, |status| {
-                if status.success() {
-                    CleanupOutcome::Confirmed
-                } else {
-                    CleanupOutcome::Failed
-                }
-            });
+        let cleanup = cleanup_with_timeout(&self.binary, &name, self.cleanup_timeout);
         Ok(SupervisorReceipt {
             termination,
             cleanup,
@@ -182,6 +186,36 @@ impl LocalPodmanSupervisor {
             stderr: stderr.join().unwrap_or_default(),
             conformance_label: "non-conformant-local",
         })
+    }
+}
+
+fn cleanup_with_timeout(binary: &str, name: &str, timeout: Duration) -> CleanupOutcome {
+    let Ok(mut cleanup) = Command::new(binary)
+        .args(["rm", "--force", name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return CleanupOutcome::Failed;
+    };
+    let deadline = Instant::now() + timeout;
+    loop {
+        match cleanup.try_wait() {
+            Ok(Some(status)) => {
+                return if status.success() {
+                    CleanupOutcome::Confirmed
+                } else {
+                    CleanupOutcome::Failed
+                };
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) | Err(_) => {
+                let _ = cleanup.kill();
+                let _ = cleanup.wait();
+                return CleanupOutcome::Failed;
+            }
+        }
     }
 }
 fn bounded_reader<R: Read + Send + 'static>(
@@ -261,7 +295,10 @@ mod tests {
     }
     #[test]
     fn command_denies_network_mounts_privilege_and_capabilities() {
-        let args = LocalPodmanSupervisor::default().command_line(&admitted(JobClass::Verifier));
+        let mut execution = admitted(JobClass::Verifier);
+        execution.request.environment_variables =
+            vec![("PROBE_TOKEN".into(), "do-not-put-this-in-argv".into())];
+        let args = LocalPodmanSupervisor::default().command_line(&execution);
         let text = args.join(" ");
         assert!(text.contains("--network none"));
         assert!(text.contains("--cap-drop ALL"));
@@ -270,6 +307,8 @@ mod tests {
         assert!(!text.contains("docker.sock"));
         assert!(!text.contains("--privileged"));
         assert!(!text.contains("--volume"));
+        assert!(text.contains("--env PROBE_TOKEN"));
+        assert!(!text.contains("do-not-put-this-in-argv"));
     }
     #[test]
     fn pool_identities_are_distinct_and_local_is_never_conformant() {
@@ -294,6 +333,8 @@ mod tests {
         };
         let cleanup = if mode == "cleanup-fail" {
             "exit 1"
+        } else if mode == "cleanup-timeout" {
+            "sleep 2"
         } else {
             "exit 0"
         };
@@ -315,8 +356,10 @@ mod tests {
             ("timeout", Termination::TimedOut),
             ("lost", Termination::WorkerLost),
             ("cleanup-fail", Termination::Exited(0)),
+            ("cleanup-timeout", Termination::Exited(0)),
         ] {
             let receipt = fake_backend(mode)
+                .with_cleanup_timeout(Duration::from_millis(30))
                 .execute(
                     &admitted(JobClass::Verifier),
                     &Arc::new(AtomicBool::new(false)),
@@ -326,7 +369,7 @@ mod tests {
             assert_eq!(receipt.conformance_label, "non-conformant-local");
             assert_eq!(
                 receipt.cleanup,
-                if mode == "cleanup-fail" {
+                if matches!(mode, "cleanup-fail" | "cleanup-timeout") {
                     CleanupOutcome::Failed
                 } else {
                     CleanupOutcome::Confirmed
@@ -339,5 +382,81 @@ mod tests {
             .unwrap();
         assert_eq!(receipt.termination, Termination::Cancelled);
         assert_eq!(receipt.cleanup, CleanupOutcome::Confirmed);
+    }
+
+    #[test]
+    fn explicitly_required_podman_probe_cannot_silently_skip() {
+        let Some(image) = podman_probe_image() else {
+            return;
+        };
+        assert!(
+            image.contains("@sha256:"),
+            "CAUTERIZER_PODMAN_INTEGRATION_IMAGE must be immutable"
+        );
+        let info = Command::new("podman")
+            .args(["info", "--format", "{{.Host.Security.Rootless}}"])
+            .output()
+            .expect("required Podman executable must start");
+        assert!(
+            info.status.success() && String::from_utf8_lossy(&info.stdout).trim() == "true",
+            "P09 integration probes require a working rootless Podman backend"
+        );
+
+        let probe = r#"
+            test "$PROBE_TOKEN" = "value-visible-only-in-container"
+            test ! -e /sys/class/net/eth0
+            test ! -e /host
+            ! touch /read-only-root-probe
+            ln -s /etc/passwd /work/container-only-link
+            test "$(readlink /work/container-only-link)" = /etc/passwd
+            ! dd if=/dev/zero of=/work/disk-limit bs=1048576 count=2 2>/dev/null
+        "#;
+        let output = Command::new("podman")
+            .args([
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--read-only",
+                "--log-driver",
+                "none",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--pids-limit",
+                "8",
+                "--memory",
+                "33554432",
+                "--tmpfs",
+                "/work:rw,noexec,nosuid,nodev,size=1048576",
+                "--env",
+                "PROBE_TOKEN",
+                &image,
+                "/bin/sh",
+                "-ceu",
+                probe,
+            ])
+            .env("PROBE_TOKEN", "value-visible-only-in-container")
+            .output()
+            .expect("required rootless Podman probe must start");
+        assert!(
+            output.status.success(),
+            "rootless Podman adversarial probe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn podman_probe_image() -> Option<String> {
+        match std::env::var("CAUTERIZER_PODMAN_INTEGRATION_IMAGE") {
+            Ok(image) => Some(image),
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_PODMAN_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_PODMAN_INTEGRATION_IMAGE is required when \
+                     CAUTERIZER_REQUIRE_PODMAN_TESTS is set: {error}"
+                );
+            }
+            Err(_) => None,
+        }
     }
 }
