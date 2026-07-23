@@ -240,6 +240,10 @@ name = "cauterizer-isolated-execution"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "schemars",
+ "serde",
+ "serde_jcs",
+ "serde_json",
 ]
 
 [[package]]

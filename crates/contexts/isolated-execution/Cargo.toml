@@ -14,7 +14,12 @@ context = "isolated-execution"
 
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+schemars.workspace = true
+serde.workspace = true
+serde_jcs.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
-
