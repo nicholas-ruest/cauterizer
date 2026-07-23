@@ -133,6 +133,18 @@ name = "cauterizer-advisory-intake"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cauterizer-advisory-intake-artifacts"
+version = "0.1.0"
+dependencies = [
+ "cauterizer-advisory-intake",
+ "cauterizer-infrastructure",
+ "cauterizer-syntax",
 ]
 
 [[package]]

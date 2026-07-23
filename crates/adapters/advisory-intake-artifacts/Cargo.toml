@@ -1,6 +1,6 @@
 [package]
-name = "cauterizer-advisory-intake"
-description = "Advisory Intake bounded context"
+name = "cauterizer-advisory-intake-artifacts"
+description = "Artifact commit adapter for Advisory Intake"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,17 +9,13 @@ repository.workspace = true
 publish.workspace = true
 
 [package.metadata.cauterizer]
-layer = "domain"
+layer = "infrastructure"
 context = "advisory-intake"
 
 [dependencies]
+cauterizer-advisory-intake = { version = "0.1.0", path = "../../contexts/advisory-intake" }
+cauterizer-infrastructure = { version = "0.1.0", path = "../../cauterizer-infrastructure" }
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
-serde.workspace = true
-serde_json.workspace = true
-schemars.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
 
 [lints]
 workspace = true
