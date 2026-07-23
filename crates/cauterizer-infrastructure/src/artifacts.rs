@@ -35,6 +35,19 @@ impl AccessDomain {
             Self::Evidence => "evidence",
         }
     }
+
+    /// Parses the stable database/storage representation.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "tenant" => Some(Self::Tenant),
+            "acquisition" => Some(Self::Acquisition),
+            "solver" => Some(Self::Solver),
+            "verifier" => Some(Self::Verifier),
+            "evidence" => Some(Self::Evidence),
+            _ => None,
+        }
+    }
 }
 
 /// Replaceable S3-compatible production object-store boundary.
@@ -479,7 +492,7 @@ impl ArtifactStore for InMemoryArtifactStore {
     }
 }
 
-fn validate_metadata(metadata: &ArtifactMetadata) -> Result<(), ArtifactError> {
+pub(crate) fn validate_metadata(metadata: &ArtifactMetadata) -> Result<(), ArtifactError> {
     let media = metadata.media_type.as_bytes();
     if media.is_empty()
         || media.len() > 128
@@ -493,7 +506,7 @@ fn validate_metadata(metadata: &ArtifactMetadata) -> Result<(), ArtifactError> {
     Ok(())
 }
 
-fn authorize(
+pub(crate) fn authorize(
     descriptor: &ArtifactDescriptor,
     authorization: &ArtifactReadAuthorization,
 ) -> Result<(), ArtifactError> {
@@ -507,8 +520,12 @@ fn authorize(
     Ok(())
 }
 
-fn storage_key(org: &OrganizationId, domain: AccessDomain, digest: Sha256Digest) -> String {
-    format!("{}/{domain:?}/{digest}", org.as_str())
+pub(crate) fn storage_key(
+    org: &OrganizationId,
+    domain: AccessDomain,
+    digest: Sha256Digest,
+) -> String {
+    format!("{}/{}/{digest}", org.as_str(), domain.as_str())
 }
 
 #[cfg(test)]

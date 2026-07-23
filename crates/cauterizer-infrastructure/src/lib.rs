@@ -10,6 +10,8 @@ pub mod delivery;
 pub mod filesystem_artifacts;
 /// PostgreSQL 17 transactional metadata adapter and migrations.
 pub mod postgres;
+/// S3-compatible, immutable content-addressed artifact adapter.
+pub mod s3_artifacts;
 
 /// Content-addressed artifact ports and local adapters.
 pub mod artifacts;

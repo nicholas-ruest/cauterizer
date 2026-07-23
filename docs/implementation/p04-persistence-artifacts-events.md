@@ -17,8 +17,11 @@ Status: implemented and verified on 2026-07-23.
   namespaces are distinct authorities.
 - The development filesystem adapter uses create-only quarantine files,
   immutable destination reservation, bounded reads, owner-only permissions, and
-  symlink rejection. The production boundary is an S3-compatible object-store
-  port; production deployments must pair it with PostgreSQL descriptors.
+  symlink rejection. The production `S3ArtifactStore` uses a provider-neutral
+  Rust-owned transport, create-only quarantine keys, bounded reads,
+  `If-None-Match: *` immutable publication, exact-key deletion, and
+  digest verification after every read. It exposes no tenant-facing list/head
+  authority and must be paired with PostgreSQL descriptors.
 - Envelope encryption and signing are ports. AES-256-GCM and Ed25519 development
   implementations are explicitly labeled `untrusted-development`; hosted use
   requires the P00-selected KMS/HSM implementation.
@@ -47,6 +50,13 @@ Reconciliation compares aggregate events to outbox rows, unresolved outbox rows
 to broker acknowledgements, inbox rows to stream checkpoints, committed artifact
 descriptors to exact object keys, and mark-and-sweep roots to tombstones. Never
 use object-store listing or error differences as authorization evidence.
+`live_artifact_expectations` reads a tenant-scoped, deterministic snapshot of
+non-tombstoned PostgreSQL descriptors. `reconcile_expectations` checks those
+exact immutable keys and distinguishes missing, wrong-sized, corrupt, and
+unprovable store state. Every discrepancy blocks the descriptor from satisfying
+an aggregate admission gate. Orphan discovery is deliberately a separate
+administrative inventory workflow; it must not grant application identities
+prefix-list authority.
 
 ## Verification evidence
 

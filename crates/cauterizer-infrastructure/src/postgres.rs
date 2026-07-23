@@ -1,6 +1,7 @@
 //! PostgreSQL 17 metadata adapter for atomic aggregate and outbox persistence.
 
 use crate::artifacts::AccessDomain;
+use crate::s3_artifacts::StoredObjectExpectation;
 use cauterizer_syntax::classification::DataClass;
 use cauterizer_syntax::digest::Sha256Digest;
 use cauterizer_syntax::identifiers::{
@@ -196,6 +197,8 @@ pub enum PostgresError {
     InboxSequenceConflict,
     /// An aggregate attempted to bind an absent or tombstoned artifact.
     UncommittedArtifact,
+    /// Stored artifact metadata could not be interpreted safely.
+    InvalidArtifactMetadata,
 }
 
 impl fmt::Display for PostgresError {
@@ -211,6 +214,7 @@ impl fmt::Display for PostgresError {
             Self::InboxIdentityConflict => "inbox_identity_conflict",
             Self::InboxSequenceConflict => "inbox_sequence_conflict",
             Self::UncommittedArtifact => "uncommitted_artifact_reference",
+            Self::InvalidArtifactMetadata => "invalid_artifact_metadata",
         })
     }
 }
@@ -247,6 +251,52 @@ impl PostgresMetadataStore {
     pub async fn migrate(&self) -> Result<(), PostgresError> {
         MIGRATOR.run(&self.pool).await?;
         Ok(())
+    }
+
+    /// Loads live artifact metadata for exact-key object-store reconciliation.
+    ///
+    /// # Errors
+    ///
+    /// Fails closed on database errors, unknown access domains, malformed digests,
+    /// negative sizes, or tenant substitution.
+    pub async fn live_artifact_expectations(
+        &self,
+        organization_id: &OrganizationId,
+    ) -> Result<Vec<StoredObjectExpectation>, PostgresError> {
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("SELECT set_config('app.organization_id', $1, false)")
+            .bind(organization_id.as_str())
+            .execute(&mut *connection)
+            .await?;
+        let rows = sqlx::query(
+            "SELECT organization_id, access_domain, digest, size_bytes \
+             FROM artifact_descriptors WHERE organization_id=$1 AND tombstoned_at IS NULL \
+             ORDER BY access_domain, digest",
+        )
+        .bind(organization_id.as_str())
+        .fetch_all(&mut *connection)
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                let stored_org: String = row.try_get("organization_id")?;
+                if stored_org != organization_id.as_str() {
+                    return Err(PostgresError::InvalidArtifactMetadata);
+                }
+                let domain: String = row.try_get("access_domain")?;
+                let digest: String = row.try_get("digest")?;
+                let size: i64 = row.try_get("size_bytes")?;
+                Ok(StoredObjectExpectation {
+                    organization_id: organization_id.clone(),
+                    access_domain: AccessDomain::parse(&domain)
+                        .ok_or(PostgresError::InvalidArtifactMetadata)?,
+                    digest: digest
+                        .parse()
+                        .map_err(|_| PostgresError::InvalidArtifactMetadata)?,
+                    size: u64::try_from(size)
+                        .map_err(|_| PostgresError::InvalidArtifactMetadata)?,
+                })
+            })
+            .collect()
     }
 
     /// Atomically stores aggregate state, events, outbox rows, and replay result.
@@ -1131,6 +1181,70 @@ mod tests {
                 .await
                 .unwrap(),
             InboxOutcome::Duplicate
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_artifact_reconciliation_snapshot_when_database_is_configured() {
+        let url = match std::env::var("CAUTERIZER_TEST_POSTGRES_URL") {
+            Ok(url) => url,
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_POSTGRES_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_TEST_POSTGRES_URL is required when \
+                     CAUTERIZER_REQUIRE_POSTGRES_TESTS is set: {error}"
+                );
+            }
+            Err(_) => return,
+        };
+        let pool = PgPoolOptions::new().connect(&url).await.unwrap();
+        let store = PostgresMetadataStore::new(pool.clone());
+        store.migrate().await.unwrap();
+        let organization = OrganizationId::new("artifact0").unwrap();
+        let digest = Sha256Digest::of_bytes("postgres-s3-reconciliation");
+        sqlx::query(
+            "INSERT INTO artifact_descriptors \
+             (organization_id,access_domain,digest,size_bytes,media_type,schema_name,\
+              schema_version,classification,region,retention_days,legal_hold,\
+              encryption_key_ref,producer,created_at) \
+             VALUES ($1,'verifier',$2,26,'application/octet-stream',\
+              'dev.cauterizer.artifact.payload','1.0.0','restricted_security',\
+              'us-east-1',30,false,'key_artifact0','verification',\
+              '2026-07-23T00:00:00Z'::timestamptz) \
+             ON CONFLICT (organization_id,access_domain,digest) DO UPDATE SET \
+              tombstoned_at=NULL,size_bytes=EXCLUDED.size_bytes",
+        )
+        .bind(organization.as_str())
+        .bind(digest.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+        let expectations = store
+            .live_artifact_expectations(&organization)
+            .await
+            .unwrap();
+        assert_eq!(
+            expectations,
+            vec![StoredObjectExpectation {
+                organization_id: organization.clone(),
+                access_domain: AccessDomain::Verifier,
+                digest,
+                size: 26,
+            }]
+        );
+        sqlx::query(
+            "UPDATE artifact_descriptors SET tombstoned_at=transaction_timestamp(),\
+             tombstone_reason='test_cleanup' WHERE organization_id=$1",
+        )
+        .bind(organization.as_str())
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(
+            store
+                .live_artifact_expectations(&organization)
+                .await
+                .unwrap()
+                .is_empty()
         );
     }
 }
