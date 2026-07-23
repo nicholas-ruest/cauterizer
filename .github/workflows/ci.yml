@@ -16,12 +16,29 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   RUSTFLAGS: -Dwarnings
+  CAUTERIZER_REQUIRE_POSTGRES_TESTS: "1"
+  CAUTERIZER_TEST_POSTGRES_URL: postgresql://cauterizer:cauterizer@localhost:5432/cauterizer_metadata
+  CAUTERIZER_TEST_ADAPTER_POSTGRES_URL: postgresql://cauterizer:cauterizer@localhost:5432/cauterizer_adapters
 
 jobs:
   quality:
     name: Format, clippy, and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17.5-alpine@sha256:6567bca8d7bc8c82c5922425a0baee57be8402df92bae5eacad5f01ae9544daa
+        env:
+          POSTGRES_USER: cauterizer
+          POSTGRES_PASSWORD: cauterizer
+          POSTGRES_DB: cauterizer_metadata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cauterizer -d cauterizer_metadata"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -43,11 +60,38 @@ jobs:
       - name: Verify action references are immutable
         run: ./scripts/ci/verify-action-pins.sh
 
+      - name: Create isolated adapter test database
+        env:
+          PGPASSWORD: cauterizer
+        run: createdb --host localhost --username cauterizer cauterizer_adapters
+
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+      - name: Build locked workspace
+        run: cargo build --workspace --all-targets --all-features --locked
 
       - name: Lint all targets and features
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Test all targets and features
         run: cargo test --workspace --all-targets --all-features --locked
+
+      - name: Test documentation
+        run: cargo test --workspace --all-features --doc --locked
+
+      - name: Record build reproducibility inputs
+        run: |
+          mkdir -p target/ci-evidence
+          rustc -Vv > target/ci-evidence/rustc-version.txt
+          cargo -Vv > target/ci-evidence/cargo-version.txt
+          cargo metadata --locked --format-version 1 > target/ci-evidence/cargo-metadata.json
+          sha256sum Cargo.lock rust-toolchain.toml > target/ci-evidence/input-checksums.txt
+
+      - name: Upload build-input evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rust-build-inputs-${{ github.sha }}
+          path: target/ci-evidence
+          if-no-files-found: error
+          retention-days: 30

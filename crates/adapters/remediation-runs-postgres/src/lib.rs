@@ -137,7 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn postgres_17_restart_rebuild_when_database_is_configured() {
-        let Ok(url) = std::env::var("CAUTERIZER_TEST_DATABASE_URL") else {
+        let Some(url) = postgres_test_url() else {
             return;
         };
         let pool = PgPool::connect(&url).await.unwrap();
@@ -189,5 +189,21 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    fn postgres_test_url() -> Option<String> {
+        match std::env::var("CAUTERIZER_TEST_ADAPTER_POSTGRES_URL")
+            .or_else(|_| std::env::var("CAUTERIZER_TEST_DATABASE_URL"))
+        {
+            Ok(url) => Some(url),
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_POSTGRES_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_TEST_ADAPTER_POSTGRES_URL (or legacy \
+                     CAUTERIZER_TEST_DATABASE_URL) is required when \
+                     CAUTERIZER_REQUIRE_POSTGRES_TESTS is set: {error}"
+                );
+            }
+            Err(_) => None,
+        }
     }
 }

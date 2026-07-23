@@ -975,8 +975,15 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn postgres_transaction_round_trip_when_database_is_configured() {
-        let Ok(url) = std::env::var("CAUTERIZER_TEST_POSTGRES_URL") else {
-            return;
+        let url = match std::env::var("CAUTERIZER_TEST_POSTGRES_URL") {
+            Ok(url) => url,
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_POSTGRES_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_TEST_POSTGRES_URL is required when \
+                     CAUTERIZER_REQUIRE_POSTGRES_TESTS is set: {error}"
+                );
+            }
+            Err(_) => return,
         };
         let pool = PgPoolOptions::new()
             .max_connections(2)
