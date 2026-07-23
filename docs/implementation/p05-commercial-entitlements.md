@@ -18,9 +18,14 @@ capacity. Existing reservations remain settleable after downgrade or suspension.
 The application facade validates the tenant/action authorization context, fails
 closed when mandatory audit is unavailable, binds retries to canonical SHA-256
 input, and uses an optimistic repository transaction that commits aggregate state
-and outgoing facts together. The P04 PostgreSQL unit of work is the hosted
-implementation boundary for atomic aggregate/event/outbox/idempotency persistence;
-the in-memory adapters are deterministic local/reference implementations.
+and outgoing facts together. The same-context
+`cauterizer-commercial-entitlements-postgres` adapter persists tenant-RLS
+account snapshots, durable idempotency results, and an append-only outbox.
+Reservation, settlement, aggregate version, command result, and events commit
+under one row lock and one database transaction. A transaction-scoped advisory
+lock serializes identical idempotency identities before lookup, so simultaneous
+retries cannot both mutate. The in-memory adapters remain deterministic
+local/reference implementations.
 
 ## Reliability and reconciliation
 
@@ -43,6 +48,11 @@ error data enters this context.
   downgrade, suspension, tenant/action authorization, mandatory audit, schema
   closure/drift, and the verification-semantics firewall.
 - Strict Clippy with warnings denied, formatting, and diff validation pass.
+- The PostgreSQL adapter test uses `CAUTERIZER_TEST_ADAPTER_POSTGRES_URL`
+  (or the legacy database variable) and becomes mandatory when
+  `CAUTERIZER_REQUIRE_POSTGRES_TESTS` is set. It covers concurrent hard-limit
+  reservation, exact durable replay, conflicting-key rejection, restart
+  rehydration, and foreign-tenant denial.
 - The optimized test suite completed in 13.771 seconds including compilation;
   test execution completed below the timer's 0.01-second resolution. This is a
   regression baseline, not a hosted throughput SLO.

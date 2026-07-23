@@ -1,6 +1,6 @@
 [package]
-name = "cauterizer-commercial-entitlements"
-description = "Commercial Entitlements bounded context"
+name = "cauterizer-commercial-entitlements-postgres"
+description = "PostgreSQL durability adapter for Commercial Entitlements"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,16 +9,18 @@ repository.workspace = true
 publish.workspace = true
 
 [package.metadata.cauterizer]
-layer = "domain"
+layer = "infrastructure"
 context = "commercial-entitlements"
 
 [dependencies]
+cauterizer-commercial-entitlements = { version = "0.1.0", path = "../../contexts/commercial-entitlements" }
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
-schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 
 [dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

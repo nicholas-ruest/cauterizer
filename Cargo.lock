@@ -194,6 +194,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cauterizer-commercial-entitlements-postgres"
+version = "0.1.0"
+dependencies = [
+ "cauterizer-commercial-entitlements",
+ "cauterizer-syntax",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "cauterizer-contracts"
 version = "0.1.0"
 dependencies = [

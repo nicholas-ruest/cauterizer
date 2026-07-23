@@ -5,9 +5,10 @@ use std::fmt;
 
 use cauterizer_syntax::digest::Sha256Digest;
 use cauterizer_syntax::identifiers::{ContextQualifiedId, OrganizationId};
+use serde::{Deserialize, Serialize};
 
 /// Metered resource category. It deliberately contains no verification semantics.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct UsageDimension(String);
 
 impl UsageDimension {
@@ -40,7 +41,7 @@ impl UsageDimension {
 macro_rules! owned_id {
     ($name:ident, $prefix:literal) => {
         #[doc = concat!("Commercial context identifier with `", $prefix, "` prefix.")]
-        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         pub struct $name(ContextQualifiedId);
         impl $name {
             /// Creates an ID from a canonical opaque component.
@@ -67,7 +68,7 @@ owned_id!(UsageRecordId, "usage");
 owned_id!(CreditAdjustmentId, "credit");
 
 /// Explicit runtime profile needed to enable an unlimited development plan.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum DeploymentProfile {
     /// Production-like enforcement; unlimited plans are forbidden.
     Production,
@@ -76,7 +77,7 @@ pub enum DeploymentProfile {
 }
 
 /// One immutable plan revision.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Plan {
     id: PlanId,
     revision: u64,
@@ -137,7 +138,7 @@ impl Plan {
 }
 
 /// Explicit quota interval supplied by the application clock/calendar policy.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct QuotaWindow {
     /// Inclusive canonical window start epoch milliseconds.
     pub starts_at_ms: u64,
@@ -162,7 +163,7 @@ impl QuotaWindow {
 }
 
 /// Worst-case resource request required before expensive work.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReservationRequest {
     /// Stable retry identity.
     pub id: ReservationId,
@@ -175,7 +176,7 @@ pub struct ReservationRequest {
 }
 
 /// Immutable reservation lifecycle.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ReservationStatus {
     /// Budget remains held for work or later settlement.
     Active,
@@ -189,7 +190,7 @@ pub enum ReservationStatus {
 }
 
 /// Durable contract proving cost admission for exact worst-case work.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BudgetReservation {
     request: ReservationRequest,
     status: ReservationStatus,
@@ -214,7 +215,7 @@ impl BudgetReservation {
 }
 
 /// Immutable rated usage fact.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UsageRecord {
     /// Stable record identity.
     pub id: UsageRecordId,
@@ -229,7 +230,7 @@ pub struct UsageRecord {
 }
 
 /// Immutable quota credit adjustment.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CreditAdjustment {
     /// Stable replay identity.
     pub id: CreditAdjustmentId,
@@ -242,7 +243,7 @@ pub struct CreditAdjustment {
 }
 
 /// Aggregate facts persisted atomically with account state.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum EntitlementEvent {
     /// Plan revision became active.
     PlanAssigned {
@@ -283,7 +284,7 @@ pub enum EntitlementEvent {
 }
 
 /// Sole commercial aggregate root.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EntitlementAccount {
     organization_id: OrganizationId,
     profile: DeploymentProfile,
@@ -293,6 +294,7 @@ pub struct EntitlementAccount {
     reservations: BTreeMap<ReservationId, BudgetReservation>,
     usage: BTreeMap<UsageRecordId, UsageRecord>,
     credits: BTreeMap<CreditAdjustmentId, CreditAdjustment>,
+    #[serde(skip)]
     pending_events: Vec<EntitlementEvent>,
 }
 
@@ -328,6 +330,33 @@ impl EntitlementAccount {
     #[must_use]
     pub const fn organization_id(&self) -> &OrganizationId {
         &self.organization_id
+    }
+
+    /// Serializes durable private state for a same-context repository adapter.
+    ///
+    /// Pending events are deliberately excluded and must be committed separately.
+    ///
+    /// # Errors
+    /// Returns an error if serialization unexpectedly fails.
+    pub fn durable_snapshot(&self) -> Result<serde_json::Value, EntitlementError> {
+        serde_json::to_value(self).map_err(|_| EntitlementError::InvariantViolation)
+    }
+
+    /// Rehydrates durable state and revalidates tenant/profile/plan invariants.
+    ///
+    /// # Errors
+    /// Rejects malformed state, tenant substitution, invalid plan/profile, or pending events.
+    pub fn rehydrate(
+        organization_id: &OrganizationId,
+        value: serde_json::Value,
+    ) -> Result<Self, EntitlementError> {
+        let account: Self =
+            serde_json::from_value(value).map_err(|_| EntitlementError::InvariantViolation)?;
+        if &account.organization_id != organization_id || !account.pending_events.is_empty() {
+            return Err(EntitlementError::InvariantViolation);
+        }
+        validate_plan_profile(account.profile, &account.plan)?;
+        Ok(account)
     }
 
     /// Assigns a new immutable plan revision. Existing reservations remain honored.
