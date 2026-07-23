@@ -1,0 +1,22 @@
+[package]
+name = "patch-proposals-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cauterizer-patch-proposals = { path = ".." }
+cauterizer-syntax = { path = "../../../cauterizer-syntax" }
+
+[[bin]]
+name = "unified_patch"
+path = "fuzz_targets/unified_patch.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
