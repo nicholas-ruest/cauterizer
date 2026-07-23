@@ -419,6 +419,12 @@ fn infer_layer(name: &str, manifest: &Path) -> Layer {
 }
 
 fn infer_context(name: &str, layer: Layer) -> Option<String> {
+    // This package owns cross-cutting adapter mechanisms and deliberately has no
+    // bounded-context identity. Context-specific adapters live in separately
+    // tagged packages and may depend inward on it.
+    if name.replace('_', "-") == "cauterizer-infrastructure" {
+        return None;
+    }
     if matches!(
         layer,
         Layer::Domain | Layer::Application | Layer::Infrastructure | Layer::Contracts

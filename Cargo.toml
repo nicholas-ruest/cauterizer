@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/architecture-tests",
+    "crates/adapters/asset-portfolio-postgres",
     "crates/cauterizer-api",
     "crates/cauterizer-cli",
     "crates/cauterizer-contracts",

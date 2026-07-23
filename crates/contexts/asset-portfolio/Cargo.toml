@@ -14,7 +14,11 @@ context = "asset-portfolio"
 
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+schemars.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
-
