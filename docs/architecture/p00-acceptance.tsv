@@ -1,0 +1,16 @@
+gate_id	status	due_before	evidence_requirement	evidence_path
+P00-DECISIONS	baseline_present	P01	Exact deployment runtime serialization database artifact delivery signing data approval flakiness side-channel and forbidden-authority decisions	docs/architecture/platform-decisions.md
+P00-DFD	baseline_present	P01	Control data acquisition solver verifier evidence and external-action flows with trust boundaries and prohibited flows	docs/architecture/data-flow-and-trust-boundaries.md
+P00-THREATS	baseline_present	P01	STRIDE boundary review residual risks and fail-closed treatments	docs/architecture/security-threat-model.md
+P00-ABUSE-TESTS	baseline_present	P01	Stable abuse-case identifiers mapped to expected result evidence cadence and ADR ownership	docs/architecture/abuse-case-test-matrix.md
+P00-DATA-KEYS	baseline_present	P01	Data classes retention residency deletion secret and key lifecycle inventory	docs/architecture/data-and-key-inventory.md
+P00-FIXTURE-PIN	baseline_present	P01	CVE-Bench case benchmark commit vulnerable revision license assumptions and deterministic qualification exit criteria	docs/architecture/platform-decisions.md
+P00-RUST-OWNERSHIP	baseline_present	P01	Decision explaining why Rust owns the trusted core and how non-Rust code is isolated	docs/architecture/p00-decision-record.md
+P00-FORBIDDEN-AUTHORITY	baseline_present	P01	Testable prohibition on live exploitation submission ticket mutation merge release and deployment authority	docs/architecture/p00-decision-record.md
+P00-TRACEABILITY	baseline_present	P01	ADR and threat ownership mapped to implementation and verification evidence	docs/architecture/decision-traceability.md
+P00-NAMED-APPROVALS	external_required	hosted-production	Approval record naming accountable product architecture security privacy-legal and operations people with scope decision date and immutable reviewed revision	.evidence/p00/named-approvals.md
+P00-FIXTURE-LEGAL	external_required	P10	License ledger notices redistribution decision named legal-security reviewers reviewed pins and approval date	.evidence/p00/fixture-license-approval.md
+P00-FIXTURE-QUALIFICATION	external_required	P10	Ten fresh network-denied base FAIL no-op FAIL bad FAIL gold PASS records bound to immutable source environment commands receipts and qualification policy digests	.evidence/p00/fixture-qualification.md
+P00-LOCAL-SANDBOX	external_required	P09	Exact backend TCB adversarial probe results cleanup evidence non-conformant labeling residual risks named security reviewer and reviewed revision	.evidence/p00/local-sandbox-qualification.md
+P00-HOSTED-SANDBOX	external_required	hosted-conformant-release	Exact gVisor-or-stronger backend identity topology TCB AC-004-through-AC-015-and-AC-030 results residual-risk acceptance and reviewed revision	.evidence/p00/hosted-sandbox-qualification.md
+P00-PRIVACY-KEY-RISK	external_required	hosted-production	Named privacy legal security and operations approval of residency retention deletion restore KMS-HSM lifecycle and residual-risk register	.evidence/p00/hosted-privacy-key-risk-approval.md

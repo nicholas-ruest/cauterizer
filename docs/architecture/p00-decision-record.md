@@ -46,3 +46,19 @@ ADR-001 through ADR-024 remain `proposed` at P00. Their implementation direction
 - [DDD context map](../ddd/context-map.md)
 
 These artifacts satisfy P00's decision baseline. They are specifications and bounded spike commitments, not evidence that later implementation or production qualification has already passed.
+
+## Machine-verifiable acceptance state
+
+[`p00-acceptance.tsv`](p00-acceptance.tsv) is the canonical gate registry. It
+separates repository-present baseline decisions from evidence that requires named external
+reviewers or execution on an exact external environment.
+
+```text
+scripts/ci/verify-p00-acceptance.sh baseline
+scripts/ci/verify-p00-acceptance.sh external-ready
+```
+
+The baseline command must pass in CI. The external-ready command must fail until every
+external evidence record exists and contains an approved decision, named reviewers,
+reviewed repository revision, and evidence digests. Supplying those records does not
+silently accept an ADR; ADR status changes require a separately reviewed amendment.

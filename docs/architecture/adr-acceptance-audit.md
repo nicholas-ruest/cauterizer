@@ -1,6 +1,6 @@
 # ADR Acceptance Audit for P00
 
-Status: P00 decision input; no ADR status changes performed  
+Status: P00 implementation baseline complete; ADR acceptance and empirical gates remain open
 Audited: 2026-07-22  
 Scope: ADR-001 through ADR-024, the DDD overview/context map/scaffold, security threat-model scaffold, production-readiness blueprint, decision traceability, and P00 in `.plans/implementation-prompts.md`
 
@@ -10,7 +10,19 @@ The recommendations in this audit predate the final selections in [platform-deci
 
 An ADR may move from `proposed` to `accepted` only when its implementation-affecting questions have explicit answers, its accountable deciders are named, and any required proof is either present or captured as a bounded spike with owner, exit criteria, and deadline. A role is not a named decider: P00 should record accountable people or the project's formally authorized maintainer identity.
 
-No ADR currently satisfies that rule. Every ADR is `proposed` and every `Deciders` field is empty. ADR-009 through ADR-024 also omit an explicit validation section; omission is not acceptance. The resolutions below are concrete recommendations for the P00 decision pass, not silent amendments to the ADRs.
+No ADR currently satisfies that rule. Every ADR remains `proposed`; the repository-level
+implementation decider recorded in `p00-decision-record.md` does not substitute for the
+product, security, privacy/legal, or operations approvals required by an individual ADR.
+ADR-009 through ADR-024 also omit an explicit validation section; omission is not
+acceptance. The resolutions below are implementation constraints and bounded empirical
+gates, not silent ADR acceptance.
+
+The machine-readable source of truth for gate state and exact evidence locations is
+[`p00-acceptance.tsv`](p00-acceptance.tsv). Run
+`scripts/ci/verify-p00-acceptance.sh baseline` on every change to this baseline. Run
+`scripts/ci/verify-p00-acceptance.sh external-ready` before claiming that the external
+approval and hosted-environment gates are satisfied. The latter intentionally fails while
+the named approval and empirical evidence files are absent.
 
 ## Baseline recommendations that constrain all decisions
 
@@ -18,7 +30,10 @@ No ADR currently satisfies that rule. Every ADR is `proposed` and every `Decider
 - Initial edition: a single-operator local/offline CLI with one explicitly bootstrapped organization, fixture-only inputs, direct application orchestration, and human-gated redacted export. It is not a conformant hosted sandbox or production identity deployment.
 - Production boundary: organization-scoped contracts remain suitable for multi-tenant SaaS, dedicated enterprise, and customer-managed execution, but hosted claims require independent identities, plane separation, managed PostgreSQL/object storage, KMS/HSM, secret manager, and a gVisor-class or stronger execution boundary.
 - Canonical external form: RFC 8785 JSON Canonicalization Scheme encoded as UTF-8, SHA-256 digests expressed as lowercase hex with an explicit algorithm tag. Use deterministic CBOR only later, under a separately versioned schema, if benchmarks justify it.
-- Local persistence: SQLite in WAL mode for the offline tool and a filesystem content-addressed store with atomic rename, quarantine, verified reads, and distinct solver/verifier roots. Production port: PostgreSQL plus S3-compatible encrypted object storage. SQLite is not the hosted concurrency or tenancy proof.
+- Persistence: PostgreSQL 17 is the transactional system of record in local integration
+  and hosted deployments. Artifacts use an S3-compatible port, with MinIO for local
+  integration. A process-local filesystem adapter may support unit/development exercises
+  but is explicitly non-conformant and is not a behavioral substitute.
 - Local delivery: database-backed transactional outbox/inbox polling. Production port: the same durable contracts with PostgreSQL-backed dispatch initially; introduce a broker only after load evidence, without changing domain events.
 - Cryptography: Ed25519 evidence signatures through a Rust-owned signer port; development keys are generated locally with restrictive permissions and bundles are marked untrusted. Production signing and envelope master keys remain non-exportable KMS/HSM operations with rotation and revocation metadata.
 
@@ -202,7 +217,7 @@ The following must be resolved before product implementation begins; a bounded s
 | Deciders | Named product, architecture, security, privacy/legal, and operations accountabilities as applicable | Non-empty ADR fields and recorded approval |
 | Rust runtime | Rust 2024 trusted core; direct application/CLI path | toolchain ADR/pin and architecture rule |
 | Canonical bytes/digest | JCS UTF-8 plus tagged SHA-256 | cross-platform golden vectors |
-| Metadata/artifact stores | SQLite + filesystem CAS local; PostgreSQL + S3-compatible hosted | transaction/corruption/reconciliation plan |
+| Metadata/artifact stores | PostgreSQL 17 plus S3-compatible storage; MinIO for local integration | transaction/corruption/reconciliation plan |
 | Delivery | transactional DB outbox/inbox polling first | retry/replay/poison state model |
 | Sandbox | rootless Podman non-conformant local; gVisor-class hosted candidate | bounded enforcement spike and residual-risk owner |
 | Fixture | one exact CVE-Bench commit/case with license and locked environment | FAIL/PASS qualification record and reproducibility runs |
@@ -215,4 +230,15 @@ The following must be resolved before product implementation begins; a bounded s
 
 ## Overall conclusion
 
-**P00 is not complete and no ADR can yet be marked accepted.** The documentation provides a coherent Rust-first architecture, but it is still a proposal baseline. The highest-priority blockers are named deciders, ADR-002/009 reconciliation, the exact licensed and reproducible fixture, executable sandbox qualification, evidence predicate/key trust policy, complete data and secret inventories, solver/verifier DFD and leakage tests, and the ADR/abuse-case traceability matrix. Once those are recorded, the local/offline implementation can begin without prematurely asserting hosted conformance; production boundaries remain explicit ports and deployment/security gates rather than speculative local claims.
+**The P00 implementation decision baseline is complete; no ADR or external empirical gate
+is thereby accepted.** P01 and later implementation may proceed under the bounded,
+fail-closed decisions in this record. Named product/security/privacy/legal/operations
+approvals, fixture redistribution approval, real fixture qualification, and hosted sandbox
+evidence remain external or phase-bound gates. Their absence must block the corresponding
+claim, never be inferred from code, a role label, or this document.
+
+The acceptance registry and verification script make that distinction executable. A
+baseline pass proves only that the selected decisions, threat artifacts, evidence
+requirements, and external gate placeholders are complete and internally consistent.
+Only an `external-ready` pass against independently supplied records can prove the external
+gates, and even that does not change an ADR status without a reviewed ADR amendment.
