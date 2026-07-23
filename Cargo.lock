@@ -161,6 +161,9 @@ name = "cauterizer-commercial-entitlements"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
