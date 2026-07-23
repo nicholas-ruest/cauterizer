@@ -13,11 +13,84 @@ pub const ADVISORY_ID: &str = "CVE-2022-29217";
 pub const BENCHMARK_COMMIT: &str = "47abc2b2b522f4d8afd07296d2a35042d8639f1d";
 /// Exact vulnerable `PyJWT` revision selected by P00.
 pub const VULNERABLE_REVISION: &str = "24b29adfebcb4f057a3cef5aaf35653bc0c1c8cc";
+/// Exact upstream fix revision carried as the hidden gold control.
+pub const FIX_REVISION: &str = "9c528670c455b8d948aff95ed50e22940d1ad3fc";
+/// Immutable benchmark origin.
+pub const BENCHMARK_REPOSITORY: &str = "https://github.com/ruvnet/CVE-bench.git";
+/// Immutable target origin.
+pub const TARGET_REPOSITORY: &str = "https://github.com/jpadilla/pyjwt.git";
+/// SHA-256 of `git archive` for the selected benchmark commit.
+pub const BENCHMARK_ARCHIVE_SHA256: &str =
+    "sha256:d1c77dd3083b8af9dabb479797f5df27895361e1f0564048589ee8c2dccab00d";
+/// SHA-256 of `git archive` for the vulnerable target commit.
+pub const TARGET_ARCHIVE_SHA256: &str =
+    "sha256:3bd310cc86de449e4b55b861993d69fb815a042107b83addc21194ea1a750b10";
+/// SHA-256 of the compact selected dataset record, including its hidden patches.
+pub const DATASET_RECORD_SHA256: &str =
+    "sha256:970c05dd1ca3a1e317989a1a5ab14acb66515e5c0d6e4c43f7926107856fb816";
+/// SHA-256 of the benchmark MIT license notice.
+pub const BENCHMARK_LICENSE_SHA256: &str =
+    "sha256:631f94984f626818d42ecf717aa6e8e0afd4f9f355ca706bd2effafbd1416d06";
+/// SHA-256 of the target MIT license notice at the vulnerable revision.
+pub const TARGET_LICENSE_SHA256: &str =
+    "sha256:797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5";
 /// Fixed policy recording the ten-fresh-job rule.
 pub const POLICY_VERSION: &str = "fixture-qualification-v1-10x";
 
+/// Independently reproducible upstream evidence, separate from qualification outcomes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedUpstreamProvenance {
+    /// Benchmark archive bytes.
+    pub benchmark_archive: Sha256Digest,
+    /// Vulnerable target archive bytes.
+    pub target_archive: Sha256Digest,
+    /// Selected compact dataset record.
+    pub dataset_record: Sha256Digest,
+    /// Benchmark license/notice.
+    pub benchmark_license: Sha256Digest,
+    /// Target license/notice.
+    pub target_license: Sha256Digest,
+}
+
+impl VerifiedUpstreamProvenance {
+    /// Parses the checked-in, independently measured P00 pins.
+    ///
+    /// # Panics
+    /// Panics only if a developer corrupts a checked-in digest constant.
+    #[must_use]
+    pub fn pinned() -> Self {
+        Self {
+            benchmark_archive: BENCHMARK_ARCHIVE_SHA256.parse().expect("checked-in digest"),
+            target_archive: TARGET_ARCHIVE_SHA256.parse().expect("checked-in digest"),
+            dataset_record: DATASET_RECORD_SHA256.parse().expect("checked-in digest"),
+            benchmark_license: BENCHMARK_LICENSE_SHA256.parse().expect("checked-in digest"),
+            target_license: TARGET_LICENSE_SHA256.parse().expect("checked-in digest"),
+        }
+    }
+
+    /// Fails closed if acquired bytes do not match every independently pinned object.
+    #[must_use]
+    pub fn matches_pins(&self) -> bool {
+        self == &Self::pinned()
+    }
+}
+
+/// Results of executing real controls locally without widening them into qualification.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalFixtureExercise {
+    /// One fresh authenticated observation for each control.
+    pub observations: Vec<(
+        Control,
+        crate::domain::qualification::QualificationObservation,
+    )>,
+    /// Immutable source/environment inputs used by all jobs.
+    pub public_bundle: SolverPublicBundle,
+    /// Always false: rootless local execution is evidence, not conformant qualification.
+    pub conformant: bool,
+}
+
 /// Solver-public immutable bundle references.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SolverPublicBundle {
     /// Vulnerable source bundle.
     pub source: Sha256Digest,
@@ -83,6 +156,58 @@ impl PinnedFixturePlan {
             Control::Bad => Some(self.hidden.bad_patch),
             Control::Gold => Some(self.hidden.gold_patch),
         }
+    }
+
+    /// Exercises the real base/no-op/bad/gold controls through the Rust-owned
+    /// qualification execution port. This deliberately cannot publish a qualified
+    /// descriptor because the selected local backend is non-conformant.
+    ///
+    /// # Errors
+    /// Fails on a forged receipt, missing cleanup, unexpected outcome, networked
+    /// request, reused worker identity, or any local receipt claiming conformance.
+    pub fn exercise_nonconformant_local<R>(
+        &self,
+        runner: &mut R,
+    ) -> Result<LocalFixtureExercise, QualificationError>
+    where
+        R: crate::domain::qualification::QualificationRunner,
+    {
+        use crate::domain::qualification::TestOutcome;
+        let mut observations = Vec::with_capacity(4);
+        let mut workers = std::collections::BTreeSet::new();
+        for control in [
+            Control::VulnerableBase,
+            Control::NoOp,
+            Control::Bad,
+            Control::Gold,
+        ] {
+            let request = self.request(control, 0)?;
+            if !request.egress_denied || !workers.insert(request.worker_identity.clone()) {
+                return Err(QualificationError::InvalidExecutionRequest);
+            }
+            let observation = runner.execute(&request, control)?;
+            let expected = if control == Control::Gold {
+                TestOutcome::Pass
+            } else {
+                TestOutcome::Fail
+            };
+            if observation.outcome != expected
+                || observation.request_digest != request.canonical_digest()
+                || observation.organization_id != request.organization_id
+                || observation.worker_identity != request.worker_identity
+                || !observation.authenticated
+                || !observation.cleanup_confirmed
+                || observation.conformant
+            {
+                return Err(QualificationError::NonConformant);
+            }
+            observations.push((control, observation));
+        }
+        Ok(LocalFixtureExercise {
+            observations,
+            public_bundle: self.public.clone(),
+            conformant: false,
+        })
     }
 }
 
@@ -323,5 +448,56 @@ mod tests {
             first_request.canonical_digest(),
             second_request.canonical_digest()
         );
+    }
+
+    #[test]
+    fn independently_measured_upstream_archives_records_and_notices_are_pinned() {
+        let provenance = VerifiedUpstreamProvenance::pinned();
+        assert!(provenance.matches_pins());
+        assert_eq!(
+            BENCHMARK_REPOSITORY,
+            "https://github.com/ruvnet/CVE-bench.git"
+        );
+        assert_eq!(TARGET_REPOSITORY, "https://github.com/jpadilla/pyjwt.git");
+        assert_eq!(FIX_REVISION, "9c528670c455b8d948aff95ed50e22940d1ad3fc");
+    }
+
+    #[test]
+    fn real_local_control_path_records_evidence_but_never_qualifies() {
+        struct LocalRunner(usize);
+        impl QualificationRunner for LocalRunner {
+            fn execute(
+                &mut self,
+                request: &QualificationRequest,
+                control: Control,
+            ) -> Result<QualificationObservation, QualificationError> {
+                self.0 += 1;
+                Ok(QualificationObservation {
+                    outcome: if control == Control::Gold {
+                        TestOutcome::Pass
+                    } else {
+                        TestOutcome::Fail
+                    },
+                    normalized_digest: digest(match control {
+                        Control::VulnerableBase => "real-base-fail",
+                        Control::NoOp => "real-noop-fail",
+                        Control::Bad => "real-bad-fail",
+                        Control::Gold => "real-gold-pass",
+                    }),
+                    request_digest: request.canonical_digest(),
+                    receipt_digest: digest(&format!("local-receipt-{}", self.0)),
+                    organization_id: request.organization_id.clone(),
+                    worker_identity: request.worker_identity.clone(),
+                    authenticated: true,
+                    conformant: false,
+                    cleanup_confirmed: true,
+                })
+            }
+        }
+        let exercise = plan()
+            .exercise_nonconformant_local(&mut LocalRunner(0))
+            .unwrap();
+        assert_eq!(exercise.observations.len(), 4);
+        assert!(!exercise.conformant);
     }
 }
