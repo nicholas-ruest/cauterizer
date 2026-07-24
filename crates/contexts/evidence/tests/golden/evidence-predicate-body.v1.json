@@ -1,0 +1,18 @@
+{
+  "schema": "dev.cauterizer.evidence.bundle",
+  "version": "1.0.0",
+  "payload": {
+    "verdict": "verified_for_fixture",
+    "assessment_ref": "assessment_00000001",
+    "scope": {
+      "organization_id": "org_00000000",
+      "run_id": "run_00000001"
+    },
+    "materials": [
+      {
+        "name": "baseline-observation",
+        "digest": "sha256:8ba8496a2525ae171ffd104d632dede6ef418d9b95962a9d88e2fcdbc8d48d24"
+      }
+    ]
+  }
+}

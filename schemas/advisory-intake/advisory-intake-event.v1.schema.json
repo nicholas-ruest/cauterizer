@@ -1,0 +1,471 @@
+{
+  "$defs": {
+    "AdvisoryArtifactDescriptorV1": {
+      "additionalProperties": false,
+      "description": "Authorized immutable artifact metadata; it never embeds artifact content.",
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/DataClass",
+          "description": "Data handling class enforced by artifact reads."
+        },
+        "digest": {
+          "$ref": "#/$defs/Sha256Digest",
+          "description": "Server-computed content digest."
+        },
+        "media_type": {
+          "description": "Validated media type.",
+          "type": "string"
+        },
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId",
+          "description": "Tenant owning the descriptor and payload authorization."
+        },
+        "schema_name": {
+          "$ref": "#/$defs/SchemaName",
+          "description": "Immutable payload schema identity."
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion",
+          "description": "Immutable payload schema revision."
+        },
+        "size_bytes": {
+          "description": "Validated payload byte length.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "organization_id",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "schema_name",
+        "schema_version",
+        "classification"
+      ],
+      "type": "object"
+    },
+    "AdvisoryIntakeEventPayloadV1": {
+      "description": "Published immutable Advisory Intake facts.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A complete immutable normalized snapshot was accepted.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "snapshot": {
+                  "$ref": "#/$defs/AdvisorySnapshotV1",
+                  "description": "Accepted snapshot."
+                }
+              },
+              "required": [
+                "snapshot"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "advisory_snapshotted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A withdrawal observation appended without erasing prior snapshots.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "observation_artifact": {
+                  "$ref": "#/$defs/AdvisoryArtifactDescriptorV1",
+                  "description": "Immutable withdrawal-source descriptor."
+                },
+                "snapshot_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Snapshot to which the observed withdrawal applies."
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "observation_artifact"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "advisory_withdrawal_observed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Human/policy resolution recorded one alias relationship.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "alias": {
+                  "description": "Resolved alias spelling.",
+                  "type": "string"
+                },
+                "snapshot_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "First advisory snapshot."
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "alias"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "advisory_alias_resolved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Untrusted source input failed normalization safely.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "raw_artifact": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/AdvisoryArtifactDescriptorV1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Raw descriptor when quarantine validation completed; never raw bytes."
+                },
+                "reason": {
+                  "$ref": "#/$defs/NormalizationFailureReasonV1",
+                  "description": "Stable bounded failure reason."
+                },
+                "source_observation_id": {
+                  "description": "Source observation identifier safe for audit.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source_observation_id",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "advisory_normalization_failed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AdvisorySnapshotV1": {
+      "additionalProperties": false,
+      "description": "Immutable normalized snapshot safe for downstream selection.",
+      "properties": {
+        "advisory_id": {
+          "description": "Validated primary advisory identifier.",
+          "type": "string"
+        },
+        "affected": {
+          "description": "Ecosystem-preserving affected ranges.",
+          "items": {
+            "$ref": "#/$defs/AffectedRangeV1"
+          },
+          "type": "array"
+        },
+        "aliases": {
+          "description": "Sorted aliases; ambiguity is represented rather than auto-merged.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "canonical_artifact": {
+          "$ref": "#/$defs/AdvisoryArtifactDescriptorV1",
+          "description": "Separately classified canonical-normalization descriptor."
+        },
+        "observed_at": {
+          "$ref": "#/$defs/UtcInstant",
+          "description": "Canonical snapshot time supplied by the application clock."
+        },
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId",
+          "description": "Tenant scope."
+        },
+        "raw_artifact": {
+          "$ref": "#/$defs/AdvisoryArtifactDescriptorV1",
+          "description": "Separately classified immutable raw-source descriptor."
+        },
+        "severities": {
+          "description": "Severity observations with complete provenance.",
+          "items": {
+            "$ref": "#/$defs/SeverityV1"
+          },
+          "type": "array"
+        },
+        "snapshot_id": {
+          "$ref": "#/$defs/ContextQualifiedId",
+          "description": "Immutable snapshot identity; updates create a new identity."
+        },
+        "source_observation_id": {
+          "description": "Stable source observation identity without upstream types.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "organization_id",
+        "snapshot_id",
+        "source_observation_id",
+        "advisory_id",
+        "aliases",
+        "affected",
+        "severities",
+        "raw_artifact",
+        "canonical_artifact",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "AffectedRangeV1": {
+      "additionalProperties": false,
+      "description": "Ecosystem-preserving affected-package range.",
+      "properties": {
+        "ecosystem": {
+          "description": "Canonical ecosystem vocabulary, not a provider SDK enum.",
+          "type": "string"
+        },
+        "package": {
+          "description": "Ecosystem-native package identity.",
+          "type": "string"
+        },
+        "range": {
+          "description": "Canonical normalized range expression.",
+          "type": "string"
+        },
+        "range_type": {
+          "description": "Version-range scheme and version retained verbatim after validation.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ecosystem",
+        "package",
+        "range_type",
+        "range"
+      ],
+      "type": "object"
+    },
+    "AggregateSequence": {
+      "description": "Monotonically increasing one-based sequence of an aggregate event.",
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "CausationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Reference to the command or event that caused another fact."
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "CorrelationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Trace-safe correlation reference spanning one logical request."
+    },
+    "DataClass": {
+      "description": "Platform-wide data sensitivity labels ordered from least to most sensitive.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Information approved for public disclosure.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Non-public operational metadata with low disclosure impact.",
+          "type": "string"
+        },
+        {
+          "const": "confidential",
+          "description": "Organization-private business or source information.",
+          "type": "string"
+        },
+        {
+          "const": "restricted_security",
+          "description": "Security-sensitive data requiring the strongest payload controls.",
+          "type": "string"
+        }
+      ]
+    },
+    "NormalizationFailureReasonV1": {
+      "description": "Stable normalization rejection vocabulary.",
+      "oneOf": [
+        {
+          "const": "input_limit_exceeded",
+          "description": "Input exceeded its declared byte/reference bound.",
+          "type": "string"
+        },
+        {
+          "const": "malformed_source",
+          "description": "Input did not match the supported source schema.",
+          "type": "string"
+        },
+        {
+          "const": "missing_provenance",
+          "description": "Required attribution was absent.",
+          "type": "string"
+        },
+        {
+          "const": "ambiguous_alias",
+          "description": "Alias evidence was ambiguous and required human resolution.",
+          "type": "string"
+        },
+        {
+          "const": "invalid_affected_range",
+          "description": "Range syntax was invalid for its declared ecosystem.",
+          "type": "string"
+        },
+        {
+          "const": "invalid_severity",
+          "description": "Severity metric or revision was unsupported/malformed.",
+          "type": "string"
+        }
+      ]
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "SchemaName": {
+      "description": "A reverse-DNS schema name owned by a Cauterizer bounded context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "SeverityV1": {
+      "additionalProperties": false,
+      "description": "Severity retaining metric and revision provenance.",
+      "properties": {
+        "metric": {
+          "description": "Metric family, such as `CVSS`.",
+          "type": "string"
+        },
+        "metric_version": {
+          "description": "Exact metric revision, such as `3.1`.",
+          "type": "string"
+        },
+        "vector": {
+          "description": "Validated vector or source-native score representation.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "metric_version",
+        "vector"
+      ],
+      "type": "object"
+    },
+    "Sha256Digest": {
+      "description": "A canonical `sha256:<lowercase-hex>` content digest.",
+      "type": "string"
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned integration-event envelope.",
+  "properties": {
+    "aggregate_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Advisory aggregate identity."
+    },
+    "aggregate_sequence": {
+      "$ref": "#/$defs/AggregateSequence",
+      "description": "Aggregate ordering sequence."
+    },
+    "causation_id": {
+      "$ref": "#/$defs/CausationId",
+      "description": "Command or event causing this fact."
+    },
+    "correlation_id": {
+      "$ref": "#/$defs/CorrelationId",
+      "description": "End-to-end trace."
+    },
+    "event_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Globally unique event identity."
+    },
+    "occurred_at": {
+      "$ref": "#/$defs/UtcInstant",
+      "description": "Canonical occurrence time."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Owning tenant."
+    },
+    "payload": {
+      "$ref": "#/$defs/AdvisoryIntakeEventPayloadV1",
+      "description": "Consumer-required fact."
+    },
+    "schema_name": {
+      "$ref": "#/$defs/SchemaName",
+      "description": "Immutable schema identity."
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion",
+      "description": "Semantic schema revision."
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "organization_id",
+    "aggregate_id",
+    "aggregate_sequence",
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "title": "AdvisoryIntakeEventV1",
+  "type": "object"
+}

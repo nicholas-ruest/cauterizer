@@ -220,6 +220,7 @@ name = "cauterizer-contracts"
 version = "0.1.0"
 dependencies = [
  "cauterizer-syntax",
+ "serde_json",
 ]
 
 [[package]]
@@ -229,6 +230,7 @@ dependencies = [
  "cauterizer-infrastructure",
  "cauterizer-syntax",
  "proptest",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",

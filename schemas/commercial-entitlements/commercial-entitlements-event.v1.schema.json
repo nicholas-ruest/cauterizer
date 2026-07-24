@@ -1,0 +1,477 @@
+{
+  "$defs": {
+    "AdmissionOutcomeV1": {
+      "description": "Stable commercial admission outcome.",
+      "oneOf": [
+        {
+          "const": "reserved",
+          "description": "Worst-case budget was reserved and work may start.",
+          "type": "string"
+        },
+        {
+          "const": "denied",
+          "description": "Commercial policy denied starting cost-incurring work.",
+          "type": "string"
+        }
+      ]
+    },
+    "AggregateSequence": {
+      "description": "Monotonically increasing one-based sequence of an aggregate event.",
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "BudgetReservationV1": {
+      "additionalProperties": false,
+      "description": "Immutable reservation contract required before cost-incurring work.",
+      "properties": {
+        "expires_at": {
+          "$ref": "#/$defs/UtcInstant",
+          "description": "Exclusive reservation expiry."
+        },
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId",
+          "description": "Tenant owning both reservation and later usage."
+        },
+        "outcome": {
+          "$ref": "#/$defs/AdmissionOutcomeV1",
+          "description": "Admission outcome; only `reserved` authorizes work."
+        },
+        "reason": {
+          "$ref": "#/$defs/CommercialReasonV1",
+          "description": "Explainable commercial reason, never a security conclusion."
+        },
+        "reservation_id": {
+          "$ref": "#/$defs/ContextQualifiedId",
+          "description": "Opaque reservation identity."
+        },
+        "reserved": {
+          "description": "Complete worst-case budget held atomically across dimensions.",
+          "items": {
+            "$ref": "#/$defs/ReservedUsageV1"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "organization_id",
+        "reservation_id",
+        "reserved",
+        "expires_at",
+        "outcome",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "CausationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Reference to the command or event that caused another fact."
+    },
+    "CommercialEntitlementsEventPayloadV1": {
+      "description": "Published Commercial Entitlements facts.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A versioned plan became active.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "plan_id": {
+                  "description": "Stable plan identifier.",
+                  "type": "string"
+                },
+                "plan_version": {
+                  "description": "Immutable plan revision.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "plan_id",
+                "plan_version"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "plan_assigned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One cost/feature grant became active.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "dimension": {
+                  "$ref": "#/$defs/UsageDimensionV1",
+                  "description": "Cost dimension governed by the grant."
+                },
+                "grant_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Stable grant identifier."
+                }
+              },
+              "required": [
+                "grant_id",
+                "dimension"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "entitlement_granted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Worst-case budget was atomically reserved.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "reservation": {
+                  "$ref": "#/$defs/BudgetReservationV1",
+                  "description": "Complete immutable admission contract."
+                }
+              },
+              "required": [
+                "reservation"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "budget_reserved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Actual immutable usage settled a reservation.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "actual_amount": {
+                  "description": "Actual measured usage.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "reservation_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Reservation consumed by settlement."
+                },
+                "usage_record_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Immutable usage-record identifier."
+                }
+              },
+              "required": [
+                "reservation_id",
+                "usage_record_id",
+                "actual_amount"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "usage_settled",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Unused reserved budget was released.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "released_amount": {
+                  "description": "Unused amount returned to available budget.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "reservation_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Reservation being closed."
+                }
+              },
+              "required": [
+                "reservation_id",
+                "released_amount"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "reservation_released",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An auditable non-payment credit adjusted available budget.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "description": "Non-negative credited amount.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "credit_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Immutable credit-adjustment identifier."
+                },
+                "dimension": {
+                  "$ref": "#/$defs/UsageDimensionV1",
+                  "description": "Adjusted cost dimension."
+                }
+              },
+              "required": [
+                "credit_id",
+                "dimension",
+                "amount"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "credit_applied",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "New cost-incurring admission was suspended.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "reason_code": {
+                  "description": "Stable audit-safe suspension reason.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason_code"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "commercial_access_suspended",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CommercialReasonV1": {
+      "description": "Stable, explainable commercial reason codes.",
+      "oneOf": [
+        {
+          "const": "granted",
+          "description": "Plan explicitly grants the requested cost dimension.",
+          "type": "string"
+        },
+        {
+          "const": "unlimited_local_development",
+          "description": "Explicit unlimited local-development grant.",
+          "type": "string"
+        },
+        {
+          "const": "hard_limit_exceeded",
+          "description": "Hard organization quota would be exceeded.",
+          "type": "string"
+        },
+        {
+          "const": "commercial_access_suspended",
+          "description": "Commercial access is suspended.",
+          "type": "string"
+        },
+        {
+          "const": "entitlement_missing",
+          "description": "No applicable grant exists.",
+          "type": "string"
+        }
+      ]
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "CorrelationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Trace-safe correlation reference spanning one logical request."
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "ReservedUsageV1": {
+      "additionalProperties": false,
+      "description": "Immutable reservation contract required before cost-incurring work.",
+      "properties": {
+        "amount": {
+          "description": "Non-zero worst-case amount held for this dimension.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dimension": {
+          "$ref": "#/$defs/UsageDimensionV1",
+          "description": "Exact metered dimension."
+        }
+      },
+      "required": [
+        "dimension",
+        "amount"
+      ],
+      "type": "object"
+    },
+    "SchemaName": {
+      "description": "A reverse-DNS schema name owned by a Cauterizer bounded context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "UsageDimensionV1": {
+      "description": "Cost dimensions which may be limited or reserved.",
+      "oneOf": [
+        {
+          "const": "solver_tokens",
+          "description": "Solver model tokens.",
+          "type": "string"
+        },
+        {
+          "const": "execution_milliseconds",
+          "description": "Isolated execution wall-clock milliseconds.",
+          "type": "string"
+        },
+        {
+          "const": "storage_byte_days",
+          "description": "Retained artifact byte-days.",
+          "type": "string"
+        },
+        {
+          "const": "connector_installations",
+          "description": "Installed connector count.",
+          "type": "string"
+        }
+      ]
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned integration-event envelope.",
+  "properties": {
+    "aggregate_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Opaque entitlement-account identity."
+    },
+    "aggregate_sequence": {
+      "$ref": "#/$defs/AggregateSequence",
+      "description": "Aggregate ordering sequence."
+    },
+    "aggregate_type": {
+      "description": "Stable aggregate type.",
+      "type": "string"
+    },
+    "causation_id": {
+      "$ref": "#/$defs/CausationId",
+      "description": "Command or event which caused this fact."
+    },
+    "correlation_id": {
+      "$ref": "#/$defs/CorrelationId",
+      "description": "End-to-end trace."
+    },
+    "event_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Globally unique event identity."
+    },
+    "occurred_at": {
+      "$ref": "#/$defs/UtcInstant",
+      "description": "Canonical event time."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Owning tenant."
+    },
+    "payload": {
+      "$ref": "#/$defs/CommercialEntitlementsEventPayloadV1",
+      "description": "Consumer-required commercial fact."
+    },
+    "schema_name": {
+      "$ref": "#/$defs/SchemaName",
+      "description": "Immutable schema identity."
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion",
+      "description": "Semantic schema version."
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "aggregate_type",
+    "organization_id",
+    "aggregate_id",
+    "aggregate_sequence",
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "title": "CommercialEntitlementsEventV1",
+  "type": "object"
+}

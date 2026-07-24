@@ -11,6 +11,7 @@ use cauterizer_infrastructure::crypto::KeySignature;
 use cauterizer_syntax::digest::Sha256Digest;
 use cauterizer_syntax::identifiers::{ContextQualifiedId, OrganizationId};
 use cauterizer_syntax::schema::{SchemaEnvelope, SchemaName, SchemaVersion};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The in-toto `Statement` type this bundle's `_type` field always carries.
@@ -45,7 +46,7 @@ pub fn predicate_schema_version() -> SchemaVersion {
 /// intentionally re-declared here (rather than imported across the bounded
 /// context boundary) so Evidence's published predicate never depends on
 /// another context's internal aggregate.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecordedVerdict {
     /// Candidate satisfied the policy for the named fixture.
@@ -59,7 +60,7 @@ pub enum RecordedVerdict {
 }
 
 /// One in-toto `subject` entry: a named artifact and its content digest.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceSubject {
     /// Human-readable role of this subject within the bundle (for example
@@ -70,7 +71,7 @@ pub struct EvidenceSubject {
 }
 
 /// One supporting `materials` entry referenced, but not attested to, by the predicate.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceMaterial {
     /// Human-readable role of this material (for example `"baseline-observation"`).
@@ -80,7 +81,7 @@ pub struct EvidenceMaterial {
 }
 
 /// Organization/run binding bound once into the predicate.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceScope {
     /// Owning tenant.
@@ -89,10 +90,15 @@ pub struct EvidenceScope {
     pub run_id: ContextQualifiedId,
 }
 
-/// Cauterizer-owned predicate body carried inside the versioned [`SchemaEnvelope`].
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+/// Cauterizer-owned predicate body (schema major `1`) carried inside the
+/// versioned [`SchemaEnvelope`].
+///
+/// This is the checked-in v1 wire shape: `schemas/evidence/evidence-predicate-body.v1.schema.json`.
+/// See [`crate::domain::predicate_v2`] for the v2 evolution and the versioned
+/// offline readers that prove v1 and v2 are never conflated.
+#[derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EvidencePredicateBody {
+pub struct EvidencePredicateBodyV1 {
     /// Verbatim recorded verdict.
     pub verdict: RecordedVerdict,
     /// Immutable reference to the Verification assessment this bundle attests to.
@@ -103,8 +109,8 @@ pub struct EvidencePredicateBody {
     pub materials: Vec<EvidenceMaterial>,
 }
 
-/// Versioned Cauterizer predicate: schema identity plus the predicate body.
-pub type EvidencePredicate = SchemaEnvelope<EvidencePredicateBody>;
+/// Versioned Cauterizer predicate: schema identity plus the v1 predicate body.
+pub type EvidencePredicate = SchemaEnvelope<EvidencePredicateBodyV1>;
 
 /// The exact bytes that get canonicalized and signed: an in-toto `Statement`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -183,7 +189,7 @@ mod tests {
         let predicate = SchemaEnvelope::new(
             predicate_schema_name(),
             predicate_schema_version(),
-            EvidencePredicateBody {
+            EvidencePredicateBodyV1 {
                 verdict: RecordedVerdict::VerifiedForFixture,
                 assessment_ref: id("assessment", 1),
                 scope: EvidenceScope {
@@ -211,7 +217,10 @@ mod tests {
         assert_eq!(json["_type"], STATEMENT_TYPE);
         assert_eq!(json["predicateType"], PREDICATE_TYPE_URI);
         assert_eq!(json["subject"][0]["name"], "candidate-patch");
-        assert_eq!(json["predicate"]["schema"], "dev.cauterizer.evidence.bundle");
+        assert_eq!(
+            json["predicate"]["schema"],
+            "dev.cauterizer.evidence.bundle"
+        );
         assert_eq!(json["predicate"]["version"], "1.0.0");
         assert_eq!(
             json["predicate"]["payload"]["verdict"],
@@ -237,7 +246,10 @@ mod tests {
     #[test]
     fn every_recorded_verdict_variant_has_a_stable_snake_case_wire_label() {
         for (verdict, label) in [
-            (RecordedVerdict::VerifiedForFixture, "\"verified_for_fixture\""),
+            (
+                RecordedVerdict::VerifiedForFixture,
+                "\"verified_for_fixture\"",
+            ),
             (RecordedVerdict::Rejected, "\"rejected\""),
             (RecordedVerdict::Inconclusive, "\"inconclusive\""),
             (RecordedVerdict::NonConformant, "\"non_conformant\""),

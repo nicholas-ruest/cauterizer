@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "EvidenceMaterial": {
+      "additionalProperties": false,
+      "description": "One supporting `materials` entry referenced, but not attested to, by the predicate.",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/Sha256Digest",
+          "description": "Immutable content digest of the material artifact."
+        },
+        "name": {
+          "description": "Human-readable role of this material (for example `\"baseline-observation\"`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "EvidenceScope": {
+      "additionalProperties": false,
+      "description": "Organization/run binding bound once into the predicate.",
+      "properties": {
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId",
+          "description": "Owning tenant."
+        },
+        "run_id": {
+          "$ref": "#/$defs/ContextQualifiedId",
+          "description": "Remediation Runs run this bundle finalizes evidence for."
+        }
+      },
+      "required": [
+        "organization_id",
+        "run_id"
+      ],
+      "type": "object"
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "RecordedVerdict": {
+      "description": "Local mirror of Remediation Runs' `RecordedVerdict`.\n\nEvidence never recomputes a verdict; it only records, verbatim, the value\nVerification produced and Remediation Runs already accepted. This type is\nintentionally re-declared here (rather than imported across the bounded\ncontext boundary) so Evidence's published predicate never depends on\nanother context's internal aggregate.",
+      "oneOf": [
+        {
+          "const": "verified_for_fixture",
+          "description": "Candidate satisfied the policy for the named fixture.",
+          "type": "string"
+        },
+        {
+          "const": "rejected",
+          "description": "Candidate deterministically failed verification.",
+          "type": "string"
+        },
+        {
+          "const": "inconclusive",
+          "description": "Available observations could not establish a result.",
+          "type": "string"
+        },
+        {
+          "const": "non_conformant",
+          "description": "Verification observed a prohibited information flow.",
+          "type": "string"
+        }
+      ]
+    },
+    "Sha256Digest": {
+      "description": "A canonical `sha256:<lowercase-hex>` content digest.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Cauterizer-owned predicate body (schema major `1`) carried inside the\nversioned [`SchemaEnvelope`].\n\nThis is the checked-in v1 wire shape: `schemas/evidence/evidence-predicate-body.v1.schema.json`.\nSee [`crate::domain::predicate_v2`] for the v2 evolution and the versioned\noffline readers that prove v1 and v2 are never conflated.",
+  "properties": {
+    "assessment_ref": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Immutable reference to the Verification assessment this bundle attests to."
+    },
+    "materials": {
+      "description": "Supporting materials referenced by, but not asserted as, the subject.",
+      "items": {
+        "$ref": "#/$defs/EvidenceMaterial"
+      },
+      "type": "array"
+    },
+    "scope": {
+      "$ref": "#/$defs/EvidenceScope",
+      "description": "Organization/run binding."
+    },
+    "verdict": {
+      "$ref": "#/$defs/RecordedVerdict",
+      "description": "Verbatim recorded verdict."
+    }
+  },
+  "required": [
+    "verdict",
+    "assessment_ref",
+    "scope",
+    "materials"
+  ],
+  "title": "EvidencePredicateBodyV1",
+  "type": "object"
+}

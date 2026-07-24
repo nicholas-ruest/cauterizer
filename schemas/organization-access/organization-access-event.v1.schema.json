@@ -1,0 +1,456 @@
+{
+  "$defs": {
+    "AccessSubjectV1": {
+      "description": "Provider-neutral reference to a revocable access record.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Human organization membership record.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ContextQualifiedId"
+            },
+            "type": {
+              "const": "membership",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Workload identity record.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ServicePrincipalId"
+            },
+            "type": {
+              "const": "service_principal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Emergency support-access grant record.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ContextQualifiedId"
+            },
+            "type": {
+              "const": "break_glass_grant",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ActorId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated human actor syntax reference."
+    },
+    "AggregateSequence": {
+      "description": "Monotonically increasing one-based sequence of an aggregate event.",
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "CausationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Reference to the command or event that caused another fact."
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "CorrelationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Trace-safe correlation reference spanning one logical request."
+    },
+    "OrganizationAccessEventPayloadV1": {
+      "description": "Public Organization & Access event variants.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "An organization was created with its initial owner.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "owner": {
+                  "$ref": "#/$defs/ActorId",
+                  "description": "Initial human owner of the organization."
+                }
+              },
+              "required": [
+                "owner"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "organization_created",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A membership invitation was recorded.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "#/$defs/ActorId",
+                  "description": "Human actor bound to the invitation."
+                },
+                "membership_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Aggregate-owned membership record."
+                }
+              },
+              "required": [
+                "membership_id",
+                "actor"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "member_invited",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An invited actor accepted membership.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "#/$defs/ActorId",
+                  "description": "Human actor that accepted the invitation."
+                },
+                "membership_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Membership record that became active."
+                }
+              },
+              "required": [
+                "membership_id",
+                "actor"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "membership_accepted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A bounded role name was assigned to a membership.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "membership_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Membership receiving the role."
+                },
+                "role": {
+                  "description": "Stable built-in or organization-defined role name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membership_id",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "role_assigned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An organization-owned custom role definition was created.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "role_id": {
+                  "description": "Stable organization-owned role identifier.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role_id"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "role_defined",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Federation configuration changed; provider SDK content is excluded.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "configuration_version": {
+                  "description": "Opaque revision of the provider-neutral federation configuration.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "configuration_version"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "federation_configured",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A workload identity was provisioned.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "expires_at": {
+                  "$ref": "#/$defs/UtcInstant",
+                  "description": "Absolute expiry of the short-lived workload identity."
+                },
+                "service_principal": {
+                  "$ref": "#/$defs/ServicePrincipalId",
+                  "description": "Newly provisioned workload identity."
+                }
+              },
+              "required": [
+                "service_principal",
+                "expires_at"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "service_principal_provisioned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A time-bounded break-glass grant was issued.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "$ref": "#/$defs/ActorId",
+                  "description": "Human actor receiving emergency access."
+                },
+                "approved_by": {
+                  "$ref": "#/$defs/ActorId",
+                  "description": "Distinct human owner that approved the grant."
+                },
+                "expires_at": {
+                  "$ref": "#/$defs/UtcInstant",
+                  "description": "Absolute expiry of the emergency grant."
+                },
+                "grant_id": {
+                  "$ref": "#/$defs/ContextQualifiedId",
+                  "description": "Aggregate-owned emergency grant record."
+                }
+              },
+              "required": [
+                "grant_id",
+                "actor",
+                "approved_by",
+                "expires_at"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "break_glass_access_granted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Access was revoked for an exact aggregate-owned subject.",
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "subject": {
+                  "$ref": "#/$defs/AccessSubjectV1",
+                  "description": "Exact aggregate-owned record whose access was revoked."
+                }
+              },
+              "required": [
+                "subject"
+              ],
+              "type": "object"
+            },
+            "type": {
+              "const": "access_revoked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "data"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "SchemaName": {
+      "description": "A reverse-DNS schema name owned by a Cauterizer bounded context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "ServicePrincipalId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated workload/service-principal syntax reference."
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned fact published after an Organization aggregate transition.",
+  "properties": {
+    "aggregate_sequence": {
+      "$ref": "#/$defs/AggregateSequence",
+      "description": "Aggregate event ordering sequence."
+    },
+    "aggregate_type": {
+      "description": "Stable aggregate type, currently `organization`.",
+      "type": "string"
+    },
+    "causation_id": {
+      "$ref": "#/$defs/CausationId",
+      "description": "Command/event that caused this fact."
+    },
+    "correlation_id": {
+      "$ref": "#/$defs/CorrelationId",
+      "description": "Request trace identifier."
+    },
+    "event_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Unique event identifier for inbox deduplication."
+    },
+    "occurred_at": {
+      "$ref": "#/$defs/UtcInstant",
+      "description": "Canonical event time supplied by the application clock."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Owning organization and tenant boundary."
+    },
+    "payload": {
+      "$ref": "#/$defs/OrganizationAccessEventPayloadV1",
+      "description": "Consumer-required, non-secret event payload."
+    },
+    "schema_name": {
+      "$ref": "#/$defs/SchemaName",
+      "description": "Immutable schema identity for registry and compatibility checks."
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion",
+      "description": "Semantic schema version; consumers accept compatible v1 revisions."
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "aggregate_type",
+    "organization_id",
+    "aggregate_sequence",
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "title": "OrganizationAccessEventV1",
+  "type": "object"
+}

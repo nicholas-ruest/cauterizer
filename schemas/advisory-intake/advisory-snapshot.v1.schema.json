@@ -1,0 +1,220 @@
+{
+  "$defs": {
+    "AdvisoryArtifactDescriptorV1": {
+      "additionalProperties": false,
+      "description": "Authorized immutable artifact metadata; it never embeds artifact content.",
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/DataClass",
+          "description": "Data handling class enforced by artifact reads."
+        },
+        "digest": {
+          "$ref": "#/$defs/Sha256Digest",
+          "description": "Server-computed content digest."
+        },
+        "media_type": {
+          "description": "Validated media type.",
+          "type": "string"
+        },
+        "organization_id": {
+          "$ref": "#/$defs/OrganizationId",
+          "description": "Tenant owning the descriptor and payload authorization."
+        },
+        "schema_name": {
+          "$ref": "#/$defs/SchemaName",
+          "description": "Immutable payload schema identity."
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion",
+          "description": "Immutable payload schema revision."
+        },
+        "size_bytes": {
+          "description": "Validated payload byte length.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "organization_id",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "schema_name",
+        "schema_version",
+        "classification"
+      ],
+      "type": "object"
+    },
+    "AffectedRangeV1": {
+      "additionalProperties": false,
+      "description": "Ecosystem-preserving affected-package range.",
+      "properties": {
+        "ecosystem": {
+          "description": "Canonical ecosystem vocabulary, not a provider SDK enum.",
+          "type": "string"
+        },
+        "package": {
+          "description": "Ecosystem-native package identity.",
+          "type": "string"
+        },
+        "range": {
+          "description": "Canonical normalized range expression.",
+          "type": "string"
+        },
+        "range_type": {
+          "description": "Version-range scheme and version retained verbatim after validation.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ecosystem",
+        "package",
+        "range_type",
+        "range"
+      ],
+      "type": "object"
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "DataClass": {
+      "description": "Platform-wide data sensitivity labels ordered from least to most sensitive.",
+      "oneOf": [
+        {
+          "const": "public",
+          "description": "Information approved for public disclosure.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Non-public operational metadata with low disclosure impact.",
+          "type": "string"
+        },
+        {
+          "const": "confidential",
+          "description": "Organization-private business or source information.",
+          "type": "string"
+        },
+        {
+          "const": "restricted_security",
+          "description": "Security-sensitive data requiring the strongest payload controls.",
+          "type": "string"
+        }
+      ]
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "SchemaName": {
+      "description": "A reverse-DNS schema name owned by a Cauterizer bounded context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "SeverityV1": {
+      "additionalProperties": false,
+      "description": "Severity retaining metric and revision provenance.",
+      "properties": {
+        "metric": {
+          "description": "Metric family, such as `CVSS`.",
+          "type": "string"
+        },
+        "metric_version": {
+          "description": "Exact metric revision, such as `3.1`.",
+          "type": "string"
+        },
+        "vector": {
+          "description": "Validated vector or source-native score representation.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "metric_version",
+        "vector"
+      ],
+      "type": "object"
+    },
+    "Sha256Digest": {
+      "description": "A canonical `sha256:<lowercase-hex>` content digest.",
+      "type": "string"
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Immutable normalized snapshot safe for downstream selection.",
+  "properties": {
+    "advisory_id": {
+      "description": "Validated primary advisory identifier.",
+      "type": "string"
+    },
+    "affected": {
+      "description": "Ecosystem-preserving affected ranges.",
+      "items": {
+        "$ref": "#/$defs/AffectedRangeV1"
+      },
+      "type": "array"
+    },
+    "aliases": {
+      "description": "Sorted aliases; ambiguity is represented rather than auto-merged.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "canonical_artifact": {
+      "$ref": "#/$defs/AdvisoryArtifactDescriptorV1",
+      "description": "Separately classified canonical-normalization descriptor."
+    },
+    "observed_at": {
+      "$ref": "#/$defs/UtcInstant",
+      "description": "Canonical snapshot time supplied by the application clock."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Tenant scope."
+    },
+    "raw_artifact": {
+      "$ref": "#/$defs/AdvisoryArtifactDescriptorV1",
+      "description": "Separately classified immutable raw-source descriptor."
+    },
+    "severities": {
+      "description": "Severity observations with complete provenance.",
+      "items": {
+        "$ref": "#/$defs/SeverityV1"
+      },
+      "type": "array"
+    },
+    "snapshot_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Immutable snapshot identity; updates create a new identity."
+    },
+    "source_observation_id": {
+      "description": "Stable source observation identity without upstream types.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "organization_id",
+    "snapshot_id",
+    "source_observation_id",
+    "advisory_id",
+    "aliases",
+    "affected",
+    "severities",
+    "raw_artifact",
+    "canonical_artifact",
+    "observed_at"
+  ],
+  "title": "AdvisorySnapshotV1",
+  "type": "object"
+}

@@ -4,6 +4,8 @@
 pub mod domain {
     /// In-toto-shaped evidence bundle aggregate and versioned predicate.
     pub mod bundle;
+    /// Schema major `2` predicate evolution and versioned offline readers.
+    pub mod predicate_v2;
 }
 /// Application use cases and owned ports.
 pub mod application {

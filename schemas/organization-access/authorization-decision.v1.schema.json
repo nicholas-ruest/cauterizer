@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "ActionName": {
+      "description": "A syntactically valid action name such as `runs.read`.",
+      "type": "string"
+    },
+    "ActorId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated human actor syntax reference."
+    },
+    "AuthorizationOutcomeV1": {
+      "description": "Stable authorization outcome. Anything other than an explicit allow is deny.",
+      "oneOf": [
+        {
+          "const": "allow",
+          "description": "Policy explicitly proved the exact request is permitted.",
+          "type": "string"
+        },
+        {
+          "const": "deny",
+          "description": "Policy did not prove the exact request is permitted.",
+          "type": "string"
+        }
+      ]
+    },
+    "AuthorizationReasonV1": {
+      "description": "Stable, audit-safe policy reason vocabulary.",
+      "oneOf": [
+        {
+          "const": "role_grant",
+          "description": "An assigned role and all contextual constraints matched.",
+          "type": "string"
+        },
+        {
+          "const": "break_glass_grant",
+          "description": "An active, independently approved emergency grant matched.",
+          "type": "string"
+        },
+        {
+          "const": "unauthenticated",
+          "description": "No authenticated identity was established.",
+          "type": "string"
+        },
+        {
+          "const": "organization_mismatch",
+          "description": "Request, resource, or policy organization did not match.",
+          "type": "string"
+        },
+        {
+          "const": "identity_mismatch",
+          "description": "Supplied access records did not belong to the authenticated actor.",
+          "type": "string"
+        },
+        {
+          "const": "subject_inactive",
+          "description": "Membership, workload identity, or grant was inactive.",
+          "type": "string"
+        },
+        {
+          "const": "no_matching_grant",
+          "description": "No explicit permission matched the request.",
+          "type": "string"
+        },
+        {
+          "const": "conditions_not_satisfied",
+          "description": "A permission matched but its contextual constraints did not.",
+          "type": "string"
+        },
+        {
+          "const": "invalid_policy",
+          "description": "Policy input or configuration was invalid and failed closed.",
+          "type": "string"
+        },
+        {
+          "const": "stale_authorization_state",
+          "description": "Authorization state exceeded the permitted freshness bound.",
+          "type": "string"
+        }
+      ]
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "IdentityRef": {
+      "description": "A syntax-level authenticated principal reference.",
+      "oneOf": [
+        {
+          "description": "A human identity reference.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ActorId"
+            },
+            "kind": {
+              "const": "human",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A non-human workload identity reference.",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ServicePrincipalId"
+            },
+            "kind": {
+              "const": "service",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    },
+    "Purpose": {
+      "description": "A bounded, audit-safe statement of why access is requested.",
+      "type": "string"
+    },
+    "ResourceRef": {
+      "description": "An opaque, bounded resource reference interpreted by an owning context.",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "A canonical semantic schema version.\n\nBuild metadata is forbidden because it is ignored by semantic-version\nprecedence and would allow distinct envelope identifiers for the same version.",
+      "type": "string"
+    },
+    "ServicePrincipalId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated workload/service-principal syntax reference."
+    },
+    "UtcInstant": {
+      "description": "A canonical RFC 3339 UTC instant.\n\nOnly `YYYY-MM-DDTHH:MM:SS[.fraction]Z` is accepted. Offsets, spaces, leap\nseconds, lowercase separators, and fractional trailing zeroes are rejected so\nequal instants have one wire representation. Fractional precision is limited\nto nanoseconds.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned policy result consumed by downstream application boundaries.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/ActionName",
+      "description": "Exact operation evaluated by policy."
+    },
+    "actor": {
+      "$ref": "#/$defs/IdentityRef",
+      "description": "Authenticated identity evaluated by policy."
+    },
+    "decided_at": {
+      "$ref": "#/$defs/UtcInstant",
+      "description": "Canonical instant at which policy made the decision."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Organization whose policy made the decision."
+    },
+    "outcome": {
+      "$ref": "#/$defs/AuthorizationOutcomeV1",
+      "description": "Fail-closed authorization result."
+    },
+    "policy_version": {
+      "$ref": "#/$defs/SchemaVersion",
+      "description": "Immutable semantic version of the policy snapshot used."
+    },
+    "purpose": {
+      "$ref": "#/$defs/Purpose",
+      "description": "Declared purpose evaluated by policy."
+    },
+    "reason": {
+      "$ref": "#/$defs/AuthorizationReasonV1",
+      "description": "Stable explanation of the result."
+    },
+    "request_id": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Request to which this decision applies."
+    },
+    "resource": {
+      "$ref": "#/$defs/ResourceRef",
+      "description": "Exact opaque resource evaluated by policy."
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion",
+      "description": "Semantic version of this authorization-decision schema."
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "organization_id",
+    "actor",
+    "action",
+    "resource",
+    "purpose",
+    "outcome",
+    "reason",
+    "policy_version",
+    "decided_at"
+  ],
+  "title": "AuthorizationDecisionV1",
+  "type": "object"
+}

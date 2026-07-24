@@ -13,6 +13,7 @@ layer = "contracts"
 
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../cauterizer-syntax" }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

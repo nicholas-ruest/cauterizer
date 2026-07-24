@@ -10,8 +10,8 @@
 //! claim to be anything else.
 
 use crate::domain::bundle::{
-    ArtifactDigestOracle, EvidenceBundle, EvidenceMaterial, EvidencePredicateBody,
-    EvidenceScope, EvidenceStatement, EvidenceSubject, RecordedVerdict, predicate_schema_name,
+    ArtifactDigestOracle, EvidenceBundle, EvidenceMaterial, EvidencePredicateBodyV1, EvidenceScope,
+    EvidenceStatement, EvidenceSubject, RecordedVerdict, predicate_schema_name,
     predicate_schema_version,
 };
 use cauterizer_infrastructure::crypto::{KeyLifecycleError, SignerPort};
@@ -119,7 +119,7 @@ pub fn assemble_bundle(
     let predicate = SchemaEnvelope::new(
         predicate_schema_name(),
         predicate_schema_version(),
-        EvidencePredicateBody {
+        EvidencePredicateBodyV1 {
             verdict: request.verdict,
             assessment_ref: request.assessment_ref,
             scope: EvidenceScope {
@@ -178,7 +178,10 @@ mod tests {
         ContextQualifiedId::new(context, &format!("{n:08}")).unwrap()
     }
 
-    fn signer() -> (UntrustedDevelopmentKeyLifecycle<FixedClock>, ContextQualifiedId) {
+    fn signer() -> (
+        UntrustedDevelopmentKeyLifecycle<FixedClock>,
+        ContextQualifiedId,
+    ) {
         let directory = tempfile::tempdir().unwrap();
         let adapter = UntrustedDevelopmentKeyLifecycle::open_with_clock(
             directory.keep(),

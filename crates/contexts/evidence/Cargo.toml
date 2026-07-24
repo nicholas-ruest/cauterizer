@@ -15,10 +15,11 @@ context = "evidence"
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
 cauterizer-infrastructure = { version = "0.1.0", path = "../../cauterizer-infrastructure" }
+schemars = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
 proptest = { workspace = true }
 tempfile = "3.27.0"
 
