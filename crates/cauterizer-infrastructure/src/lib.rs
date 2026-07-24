@@ -23,6 +23,10 @@ pub mod crypto;
 /// Reusable transactional metadata persistence mechanisms.
 pub mod transactional;
 
+/// Audit-safe structured telemetry: event/metric allowlist, RED metrics,
+/// threat-model alerts, and local file sinks.
+pub mod telemetry;
+
 /// Wires Isolated Execution's worker-protocol signer through the P12
 /// key-lifecycle port.
 pub mod worker_signing;

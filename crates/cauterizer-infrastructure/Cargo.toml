@@ -15,6 +15,7 @@ layer = "infrastructure"
 cauterizer-contracts = { version = "0.1.0", path = "../cauterizer-contracts" }
 cauterizer-isolated-execution = { version = "0.1.0", path = "../contexts/isolated-execution" }
 cauterizer-syntax = { version = "0.1.0", path = "../cauterizer-syntax" }
+serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 aes-gcm.workspace = true

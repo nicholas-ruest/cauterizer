@@ -1223,7 +1223,10 @@ mod tests {
             "authorization.justification()",
             "INSERT INTO delivery_replay_audit",
         ] {
-            assert!(source.contains(required), "missing adapter invariant {required}");
+            assert!(
+                source.contains(required),
+                "missing adapter invariant {required}"
+            );
         }
     }
 
@@ -1301,7 +1304,11 @@ mod tests {
             }
             Err(_) => return,
         };
-        let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.unwrap();
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .unwrap();
         let store = PostgresMetadataStore::new(pool.clone());
         store.migrate().await.unwrap();
 
@@ -1329,7 +1336,10 @@ mod tests {
         revoked.revoked_at = Some(UtcInstant::parse("2026-02-01T00:00:00Z").unwrap());
         revoked.revocation_reason = Some("compromise-drill".into());
         revoked.metadata_version = 2;
-        store.record_signing_key(&organization, &revoked).await.unwrap();
+        store
+            .record_signing_key(&organization, &revoked)
+            .await
+            .unwrap();
 
         let current = store
             .current_signing_key_metadata(&organization, &key_id)
@@ -1338,7 +1348,10 @@ mod tests {
             .expect("row was just inserted");
         assert_eq!(current.metadata_version, 2);
         assert_eq!(current.state, "revoked");
-        assert_eq!(current.revocation_reason.as_deref(), Some("compromise-drill"));
+        assert_eq!(
+            current.revocation_reason.as_deref(),
+            Some("compromise-drill")
+        );
 
         // A different tenant never observes this key's trust metadata.
         let other_org = OrganizationId::new("00000001").unwrap();
@@ -1533,11 +1546,13 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap(),
-            sqlx::query_scalar("SELECT count(*) FROM transactional_outbox WHERE organization_id=$1")
-                .bind(organization.as_str())
-                .fetch_one(&pool)
-                .await
-                .unwrap(),
+            sqlx::query_scalar(
+                "SELECT count(*) FROM transactional_outbox WHERE organization_id=$1",
+            )
+            .bind(organization.as_str())
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
             sqlx::query_scalar("SELECT count(*) FROM idempotency_results WHERE organization_id=$1")
                 .bind(organization.as_str())
                 .fetch_one(&pool)

@@ -478,7 +478,11 @@ pub trait SignerPort {
     ///
     /// Fails closed when the key is unknown, not the active signer for its
     /// trust domain, revoked, destroyed, or outside its validity window.
-    fn sign(&self, key_id: &ContextQualifiedId, message: &[u8]) -> Result<KeySignature, KeyLifecycleError>;
+    fn sign(
+        &self,
+        key_id: &ContextQualifiedId,
+        message: &[u8],
+    ) -> Result<KeySignature, KeyLifecycleError>;
 
     /// Verifies an exact message and signature.
     ///
@@ -520,7 +524,10 @@ pub trait KeyLifecyclePort {
     ///
     /// Fails when the domain has no active key to rotate from or either
     /// validity window is not increasing.
-    fn rotate_with_overlap(&self, request: RotateKeyRequest) -> Result<KeyMetadata, KeyLifecycleError>;
+    fn rotate_with_overlap(
+        &self,
+        request: RotateKeyRequest,
+    ) -> Result<KeyMetadata, KeyLifecycleError>;
 
     /// Marks a key revoked. Revocation is immediate and unconditional: the
     /// very next verification against this key fails, and a revoked active
@@ -647,7 +654,11 @@ fn millis_to_instant(unix_millis: i64) -> UtcInstant {
 /// Gregorian `(year, month, day)`. Public domain algorithm.
 fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
     let shifted = days_since_epoch + 719_468;
-    let era = if shifted >= 0 { shifted } else { shifted - 146_096 } / 146_097;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
     let day_of_era = shifted - era * 146_097;
     let year_of_era =
         (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
@@ -740,14 +751,21 @@ impl<C: KeyLifecycleClock> UntrustedDevelopmentKeyLifecycle<C> {
         })
     }
 
-    fn write_secret_file(&self, key_id: &ContextQualifiedId, secret: &[u8; 32]) -> Result<(), KeyLifecycleError> {
+    fn write_secret_file(
+        &self,
+        key_id: &ContextQualifiedId,
+        secret: &[u8; 32],
+    ) -> Result<(), KeyLifecycleError> {
         let path = self.root.join(key_id.opaque());
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
         options.mode(0o600);
-        let mut file = options.open(&path).map_err(|_| KeyLifecycleError::Unavailable)?;
-        file.write_all(secret).map_err(|_| KeyLifecycleError::Unavailable)?;
+        let mut file = options
+            .open(&path)
+            .map_err(|_| KeyLifecycleError::Unavailable)?;
+        file.write_all(secret)
+            .map_err(|_| KeyLifecycleError::Unavailable)?;
         Ok(())
     }
 
@@ -774,7 +792,8 @@ fn generate_key_id() -> ContextQualifiedId {
     getrandom::getrandom(&mut random).expect("OS randomness is required to generate a signing key");
     let digest = cauterizer_syntax::digest::Sha256Digest::of_bytes(random).to_tagged_hex();
     let opaque = digest.strip_prefix("sha256:").unwrap_or(&digest);
-    ContextQualifiedId::new("signing-key", opaque).expect("digest hex is always a valid opaque component")
+    ContextQualifiedId::new("signing-key", opaque)
+        .expect("digest hex is always a valid opaque component")
 }
 
 fn generate_secret() -> [u8; 32] {
@@ -823,12 +842,18 @@ impl<C: KeyLifecycleClock> KeyLifecyclePort for UntrustedDevelopmentKeyLifecycle
             .current
             .get(trust_domain)
             .ok_or(KeyLifecycleError::NoActiveKey)?;
-        let record = state.keys.get(key_id).ok_or(KeyLifecycleError::NoActiveKey)?;
+        let record = state
+            .keys
+            .get(key_id)
+            .ok_or(KeyLifecycleError::NoActiveKey)?;
         check_time_bounds(&record.metadata, &self.clock.now())?;
         Ok(record.metadata.clone())
     }
 
-    fn rotate_with_overlap(&self, request: RotateKeyRequest) -> Result<KeyMetadata, KeyLifecycleError> {
+    fn rotate_with_overlap(
+        &self,
+        request: RotateKeyRequest,
+    ) -> Result<KeyMetadata, KeyLifecycleError> {
         let now = self.clock.now();
         if now >= request.overlap_until || now >= request.new_expires_at {
             return Err(KeyLifecycleError::InvalidWindow);
@@ -877,7 +902,10 @@ impl<C: KeyLifecycleClock> KeyLifecyclePort for UntrustedDevelopmentKeyLifecycle
     fn revoke(&self, key_id: &ContextQualifiedId, reason: &str) -> Result<(), KeyLifecycleError> {
         let revoked_at = self.clock.now();
         let mut state = self.state.lock().expect("key lifecycle lock poisoned");
-        let record = state.keys.get_mut(key_id).ok_or(KeyLifecycleError::UnknownKey)?;
+        let record = state
+            .keys
+            .get_mut(key_id)
+            .ok_or(KeyLifecycleError::UnknownKey)?;
         if record.metadata.state == KeyLifecycleState::Destroyed {
             return Err(KeyLifecycleError::KeyDestroyed);
         }
@@ -894,7 +922,10 @@ impl<C: KeyLifecycleClock> KeyLifecyclePort for UntrustedDevelopmentKeyLifecycle
 
     fn destroy(&self, key_id: &ContextQualifiedId) -> Result<(), KeyLifecycleError> {
         let mut state = self.state.lock().expect("key lifecycle lock poisoned");
-        let record = state.keys.get_mut(key_id).ok_or(KeyLifecycleError::UnknownKey)?;
+        let record = state
+            .keys
+            .get_mut(key_id)
+            .ok_or(KeyLifecycleError::UnknownKey)?;
         if record.metadata.state == KeyLifecycleState::Destroyed {
             return Ok(());
         }
@@ -930,9 +961,16 @@ fn check_time_bounds(metadata: &KeyMetadata, now: &UtcInstant) -> Result<(), Key
 }
 
 impl<C: KeyLifecycleClock> SignerPort for UntrustedDevelopmentKeyLifecycle<C> {
-    fn sign(&self, key_id: &ContextQualifiedId, message: &[u8]) -> Result<KeySignature, KeyLifecycleError> {
+    fn sign(
+        &self,
+        key_id: &ContextQualifiedId,
+        message: &[u8],
+    ) -> Result<KeySignature, KeyLifecycleError> {
         let state = self.state.lock().expect("key lifecycle lock poisoned");
-        let record = state.keys.get(key_id).ok_or(KeyLifecycleError::UnknownKey)?;
+        let record = state
+            .keys
+            .get(key_id)
+            .ok_or(KeyLifecycleError::UnknownKey)?;
         match record.metadata.state {
             KeyLifecycleState::Revoked => return Err(KeyLifecycleError::KeyRevoked),
             KeyLifecycleState::Destroyed => return Err(KeyLifecycleError::KeyDestroyed),
@@ -940,7 +978,10 @@ impl<C: KeyLifecycleClock> SignerPort for UntrustedDevelopmentKeyLifecycle<C> {
             KeyLifecycleState::Active => {}
         }
         check_time_bounds(&record.metadata, &self.clock.now())?;
-        let secret = record.secret.as_ref().ok_or(KeyLifecycleError::KeyDestroyed)?;
+        let secret = record
+            .secret
+            .as_ref()
+            .ok_or(KeyLifecycleError::KeyDestroyed)?;
         let signing_key = SigningKey::from_bytes(secret.expose_sensitive());
         Ok(KeySignature {
             key_id: key_id.clone(),
@@ -969,7 +1010,10 @@ impl<C: KeyLifecycleClock> SignerPort for UntrustedDevelopmentKeyLifecycle<C> {
             KeyLifecycleState::Active | KeyLifecycleState::Overlap => {}
         }
         check_time_bounds(&record.metadata, &self.clock.now())?;
-        let secret = record.secret.as_ref().ok_or(KeyLifecycleError::KeyDestroyed)?;
+        let secret = record
+            .secret
+            .as_ref()
+            .ok_or(KeyLifecycleError::KeyDestroyed)?;
         let signing_key = SigningKey::from_bytes(secret.expose_sensitive());
         signing_key
             .verifying_key()
@@ -979,7 +1023,11 @@ impl<C: KeyLifecycleClock> SignerPort for UntrustedDevelopmentKeyLifecycle<C> {
 }
 
 impl<T: SignerPort + ?Sized> SignerPort for &T {
-    fn sign(&self, key_id: &ContextQualifiedId, message: &[u8]) -> Result<KeySignature, KeyLifecycleError> {
+    fn sign(
+        &self,
+        key_id: &ContextQualifiedId,
+        message: &[u8],
+    ) -> Result<KeySignature, KeyLifecycleError> {
         (**self).sign(key_id, message)
     }
 
@@ -997,7 +1045,10 @@ impl<T: KeyLifecyclePort + ?Sized> KeyLifecyclePort for &T {
         (**self).current_key(trust_domain)
     }
 
-    fn rotate_with_overlap(&self, request: RotateKeyRequest) -> Result<KeyMetadata, KeyLifecycleError> {
+    fn rotate_with_overlap(
+        &self,
+        request: RotateKeyRequest,
+    ) -> Result<KeyMetadata, KeyLifecycleError> {
         (**self).rotate_with_overlap(request)
     }
 
@@ -1184,7 +1235,10 @@ mod key_lifecycle_tests {
             adapter.revoke(&unknown, "n/a"),
             Err(KeyLifecycleError::UnknownKey)
         );
-        assert_eq!(adapter.destroy(&unknown), Err(KeyLifecycleError::UnknownKey));
+        assert_eq!(
+            adapter.destroy(&unknown),
+            Err(KeyLifecycleError::UnknownKey)
+        );
         assert_eq!(
             adapter.metadata(&unknown),
             Err(KeyLifecycleError::UnknownKey)
@@ -1230,22 +1284,13 @@ mod key_lifecycle_tests {
         // The canonical instant format rejects a trailing-zero fractional
         // digit; every parseable fractional millisecond value must trim to
         // its shortest non-trailing-zero form.
-        assert_eq!(
-            millis_to_instant(1_500).as_str(),
-            "1970-01-01T00:00:01.5Z"
-        );
-        assert_eq!(
-            millis_to_instant(1_050).as_str(),
-            "1970-01-01T00:00:01.05Z"
-        );
+        assert_eq!(millis_to_instant(1_500).as_str(), "1970-01-01T00:00:01.5Z");
+        assert_eq!(millis_to_instant(1_050).as_str(), "1970-01-01T00:00:01.05Z");
         assert_eq!(
             millis_to_instant(1_005).as_str(),
             "1970-01-01T00:00:01.005Z"
         );
-        assert_eq!(
-            millis_to_instant(1_990).as_str(),
-            "1970-01-01T00:00:01.99Z"
-        );
+        assert_eq!(millis_to_instant(1_990).as_str(), "1970-01-01T00:00:01.99Z");
         for millis_of_second in 1u32..1000 {
             UtcInstant::parse(millis_to_instant(i64::from(millis_of_second)).into_string())
                 .expect("every non-zero millisecond value must format canonically");
@@ -1255,7 +1300,10 @@ mod key_lifecycle_tests {
     #[test]
     fn signing_algorithm_and_lifecycle_state_wire_labels_round_trip() {
         assert_eq!(SigningAlgorithm::Ed25519.as_str(), "ed25519");
-        assert_eq!(SigningAlgorithm::parse("ed25519"), Some(SigningAlgorithm::Ed25519));
+        assert_eq!(
+            SigningAlgorithm::parse("ed25519"),
+            Some(SigningAlgorithm::Ed25519)
+        );
         assert_eq!(SigningAlgorithm::parse("rsa"), None);
 
         for (state, label) in [
@@ -1416,9 +1464,11 @@ mod key_lifecycle_tests {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         let root = directory.keep();
-        let adapter =
-            UntrustedDevelopmentKeyLifecycle::open_with_clock(root.clone(), FixedClock::at("2026-01-01T00:00:00Z"))
-                .unwrap();
+        let adapter = UntrustedDevelopmentKeyLifecycle::open_with_clock(
+            root.clone(),
+            FixedClock::at("2026-01-01T00:00:00Z"),
+        )
+        .unwrap();
         let metadata = adapter
             .generate(GenerateKeyRequest {
                 trust_domain: domain(),

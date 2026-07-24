@@ -204,7 +204,13 @@ impl DispatchPort for PostgresDispatchPort {
             let outbox_id = parse_id(outbox_id)?;
             let token = parse_id(claim_token)?;
             self.store
-                .retry_outbox(organization_id, &outbox_id, &token, delay_seconds, reason_code)
+                .retry_outbox(
+                    organization_id,
+                    &outbox_id,
+                    &token,
+                    delay_seconds,
+                    reason_code,
+                )
                 .await?;
             Ok(())
         })
@@ -261,8 +267,7 @@ impl DispatchPolicy {
         max_attempts: u16,
         retry_delay_seconds: u32,
     ) -> Result<Self, DispatchConfigurationError> {
-        if batch_limit == 0 || lease_seconds == 0 || max_attempts == 0 || retry_delay_seconds == 0
-        {
+        if batch_limit == 0 || lease_seconds == 0 || max_attempts == 0 || retry_delay_seconds == 0 {
             return Err(DispatchConfigurationError::EmptyPolicy);
         }
         Ok(Self {
@@ -362,7 +367,8 @@ where
         let attempts = claim.attempts;
         match handler(claim).await {
             Ok(()) => {
-                port.acknowledge(organization_id, &outbox_id, &token).await?;
+                port.acknowledge(organization_id, &outbox_id, &token)
+                    .await?;
                 report.acknowledged += 1;
             }
             Err(HandlerFailure::Poison(code)) => {
@@ -475,12 +481,16 @@ impl FakeDispatchPort {
     /// Panics only if the internal lock is poisoned by an earlier panic.
     #[must_use]
     pub fn state(&self, outbox_id: &str) -> Option<FakeRowState> {
-        self.rows.lock().unwrap().get(outbox_id).map(|row| FakeRowState {
-            attempts: row.attempts,
-            delivered: row.delivered,
-            dead_lettered: row.dead_lettered,
-            last_reason: row.last_reason.clone(),
-        })
+        self.rows
+            .lock()
+            .unwrap()
+            .get(outbox_id)
+            .map(|row| FakeRowState {
+                attempts: row.attempts,
+                delivered: row.delivered,
+                dead_lettered: row.dead_lettered,
+                last_reason: row.last_reason.clone(),
+            })
     }
 }
 
@@ -530,7 +540,9 @@ impl DispatchPort for FakeDispatchPort {
     ) -> BoxFuture<'a, Result<(), DispatchPortError>> {
         Box::pin(async move {
             let mut rows = self.rows.lock().unwrap();
-            let row = rows.get_mut(outbox_id).ok_or(DispatchPortError::ClaimLost)?;
+            let row = rows
+                .get_mut(outbox_id)
+                .ok_or(DispatchPortError::ClaimLost)?;
             if row.claim_token.as_deref() != Some(claim_token) {
                 return Err(DispatchPortError::ClaimLost);
             }
@@ -550,7 +562,9 @@ impl DispatchPort for FakeDispatchPort {
     ) -> BoxFuture<'a, Result<(), DispatchPortError>> {
         Box::pin(async move {
             let mut rows = self.rows.lock().unwrap();
-            let row = rows.get_mut(outbox_id).ok_or(DispatchPortError::ClaimLost)?;
+            let row = rows
+                .get_mut(outbox_id)
+                .ok_or(DispatchPortError::ClaimLost)?;
             if row.claim_token.as_deref() != Some(claim_token) {
                 return Err(DispatchPortError::ClaimLost);
             }
@@ -570,7 +584,9 @@ impl DispatchPort for FakeDispatchPort {
     ) -> BoxFuture<'a, Result<(), DispatchPortError>> {
         Box::pin(async move {
             let mut rows = self.rows.lock().unwrap();
-            let row = rows.get_mut(outbox_id).ok_or(DispatchPortError::ClaimLost)?;
+            let row = rows
+                .get_mut(outbox_id)
+                .ok_or(DispatchPortError::ClaimLost)?;
             if row.claim_token.as_deref() != Some(claim_token) {
                 return Err(DispatchPortError::ClaimLost);
             }
@@ -586,8 +602,8 @@ impl DispatchPort for FakeDispatchPort {
 mod tests {
     use super::*;
     use crate::delivery::FailureCode;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn organization() -> OrganizationId {
         OrganizationId::new("00000000").unwrap()
@@ -631,25 +647,40 @@ mod tests {
         let organization = organization();
         let calls = Arc::new(AtomicUsize::new(0));
         let handled = Arc::clone(&calls);
-        let report = dispatch_batch(&port, &organization, "claim_00000001", policy(3), move |_| {
-            handled.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { Ok(()) })
-        })
+        let report = dispatch_batch(
+            &port,
+            &organization,
+            "claim_00000001",
+            policy(3),
+            move |_| {
+                handled.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Ok(()) })
+            },
+        )
         .await
         .unwrap();
-        assert_eq!(report, DispatchReport {
-            acknowledged: 1,
-            retried: 0,
-            dead_lettered: 0,
-        });
+        assert_eq!(
+            report,
+            DispatchReport {
+                acknowledged: 1,
+                retried: 0,
+                dead_lettered: 0,
+            }
+        );
         assert!(port.state("outbox_00000001").unwrap().delivered);
 
         // Crash-after-ack: nothing is left to claim, so the handler never runs again.
         let handled_again = Arc::clone(&calls);
-        let report = dispatch_batch(&port, &organization, "claim_00000002", policy(3), move |_| {
-            handled_again.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { Ok(()) })
-        })
+        let report = dispatch_batch(
+            &port,
+            &organization,
+            "claim_00000002",
+            policy(3),
+            move |_| {
+                handled_again.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Ok(()) })
+            },
+        )
         .await
         .unwrap();
         assert_eq!(report.total(), 0);
@@ -665,17 +696,26 @@ mod tests {
         let port = seed_one();
         let organization = organization();
         let code = FailureCode::parse("unsupported_required_semantics").unwrap();
-        let report = dispatch_batch(&port, &organization, "claim_00000001", policy(5), move |_| {
-            let code = code.clone();
-            Box::pin(async move { Err(HandlerFailure::Poison(code)) })
-        })
+        let report = dispatch_batch(
+            &port,
+            &organization,
+            "claim_00000001",
+            policy(5),
+            move |_| {
+                let code = code.clone();
+                Box::pin(async move { Err(HandlerFailure::Poison(code)) })
+            },
+        )
         .await
         .unwrap();
-        assert_eq!(report, DispatchReport {
-            acknowledged: 0,
-            retried: 0,
-            dead_lettered: 1,
-        });
+        assert_eq!(
+            report,
+            DispatchReport {
+                acknowledged: 0,
+                retried: 0,
+                dead_lettered: 1,
+            }
+        );
         let state = port.state("outbox_00000001").unwrap();
         assert!(state.dead_lettered);
         assert_eq!(state.attempts, 0);
@@ -715,17 +755,11 @@ mod tests {
         // Third attempt exceeds max_attempts=3 and dead-letters with the same code.
         let calls_final = Arc::clone(&calls);
         let code = code.clone();
-        let report = dispatch_batch(
-            &port,
-            &organization,
-            "claim_final",
-            policy(3),
-            move |_| {
-                calls_final.fetch_add(1, Ordering::SeqCst);
-                let code = code.clone();
-                Box::pin(async move { Err(HandlerFailure::Retryable(code)) })
-            },
-        )
+        let report = dispatch_batch(&port, &organization, "claim_final", policy(3), move |_| {
+            calls_final.fetch_add(1, Ordering::SeqCst);
+            let code = code.clone();
+            Box::pin(async move { Err(HandlerFailure::Retryable(code)) })
+        })
         .await
         .unwrap();
         assert_eq!(report.dead_lettered, 1);
@@ -759,10 +793,16 @@ mod tests {
         // A fresh dispatch pass reclaims and successfully applies the event exactly once.
         let calls = Arc::new(AtomicUsize::new(0));
         let handled = Arc::clone(&calls);
-        let report = dispatch_batch(&port, &organization, "claim_recovered", policy(3), move |_| {
-            handled.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { Ok(()) })
-        })
+        let report = dispatch_batch(
+            &port,
+            &organization,
+            "claim_recovered",
+            policy(3),
+            move |_| {
+                handled.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Ok(()) })
+            },
+        )
         .await
         .unwrap();
         assert_eq!(report.acknowledged, 1);
@@ -794,14 +834,20 @@ mod tests {
         // claims and handles it again.
         let applied_second = Arc::clone(&applied);
         let invocations_second = Arc::clone(&invocations);
-        let report = dispatch_batch(&port, &organization, "claim_second", policy(3), move |claim| {
-            invocations_second.fetch_add(1, Ordering::SeqCst);
-            let applied = Arc::clone(&applied_second);
-            Box::pin(async move {
-                applied.lock().unwrap().insert(claim.event_id.clone());
-                Ok(())
-            })
-        })
+        let report = dispatch_batch(
+            &port,
+            &organization,
+            "claim_second",
+            policy(3),
+            move |claim| {
+                invocations_second.fetch_add(1, Ordering::SeqCst);
+                let applied = Arc::clone(&applied_second);
+                Box::pin(async move {
+                    applied.lock().unwrap().insert(claim.event_id.clone());
+                    Ok(())
+                })
+            },
+        )
         .await
         .unwrap();
 
@@ -856,8 +902,7 @@ mod tests {
     /// none lost) when dozens of tasks hammer [`FakeDispatchPort`]
     /// concurrently on a real multi-threaded runtime.
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-    async fn many_concurrent_workers_claim_disjoint_rows_and_acknowledge_each_event_exactly_once()
-     {
+    async fn many_concurrent_workers_claim_disjoint_rows_and_acknowledge_each_event_exactly_once() {
         const ROWS: usize = 200;
         const WORKERS: usize = 32;
 
@@ -870,7 +915,8 @@ mod tests {
         });
         let port = Arc::new(FakeDispatchPort::new(seed));
         let organization = organization();
-        let handled_counts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let handled_counts: Arc<Mutex<HashMap<String, usize>>> =
+            Arc::new(Mutex::new(HashMap::new()));
 
         let mut workers = Vec::with_capacity(WORKERS);
         for worker in 0..WORKERS {
@@ -935,5 +981,56 @@ mod tests {
                 "row {outbox_id} left undelivered"
             );
         }
+    }
+
+    /// Not a load test: a small, honest, this-sandbox-only local timing
+    /// sample of dispatch throughput against the in-memory fake port,
+    /// quoted (with that caveat) in the P18 provisional SLI table
+    /// (`docs/architecture/p18-provisional-sli-table.md`). The bound is a
+    /// generous sanity check, not a performance assertion, and this
+    /// in-memory port is not representative of real PostgreSQL latency.
+    #[tokio::test]
+    async fn dispatch_throughput_local_measurement() {
+        const ROWS: usize = 5_000;
+
+        let seed = (0..ROWS).map(|index| {
+            (
+                format!("outbox_{index:08}"),
+                format!("event_{index:08}"),
+                serde_json::json!({ "index": index }),
+            )
+        });
+        let port = FakeDispatchPort::new(seed);
+        let organization = organization();
+
+        let started = std::time::Instant::now();
+        let mut acknowledged = 0_usize;
+        loop {
+            let report = dispatch_batch(
+                &port,
+                &organization,
+                "throughput_measurement",
+                DispatchPolicy::new(200, 30, 3, 1).unwrap(),
+                |_claim| Box::pin(async { Ok(()) }),
+            )
+            .await
+            .unwrap();
+            if report.total() == 0 {
+                break;
+            }
+            acknowledged += report.acknowledged;
+        }
+        let elapsed = started.elapsed();
+
+        assert_eq!(acknowledged, ROWS);
+        #[allow(clippy::cast_precision_loss)]
+        let rows_per_second = ROWS as f64 / elapsed.as_secs_f64().max(f64::EPSILON);
+        eprintln!(
+            "dispatch_throughput_local_measurement: {ROWS} rows in {elapsed:?} ({rows_per_second:.0} rows/sec, in-memory port, this sandbox only)"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(30),
+            "sanity bound only, not a performance contract: took {elapsed:?}"
+        );
     }
 }

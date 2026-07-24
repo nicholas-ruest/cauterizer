@@ -36,7 +36,9 @@ impl<P> WorkerProtocolSignatureVerifier<P> {
     }
 }
 
-impl<P: SignerPort + KeyLifecyclePort> RequestSignatureVerifier for WorkerProtocolSignatureVerifier<P> {
+impl<P: SignerPort + KeyLifecyclePort> RequestSignatureVerifier
+    for WorkerProtocolSignatureVerifier<P>
+{
     fn verify(
         &self,
         key_id: &ContextQualifiedId,
@@ -157,7 +159,12 @@ mod tests {
         let verifier = WorkerProtocolSignatureVerifier::new(adapter(), trust_domain());
         let unknown = ContextQualifiedId::new("signing-key", "0000000000000000").unwrap();
         assert_eq!(
-            verifier.verify(&unknown, SignatureAlgorithmV1::Ed25519, b"payload", &"0".repeat(128)),
+            verifier.verify(
+                &unknown,
+                SignatureAlgorithmV1::Ed25519,
+                b"payload",
+                &"0".repeat(128)
+            ),
             SignatureDecision::UnknownSigner
         );
     }
@@ -175,11 +182,21 @@ mod tests {
             SignatureDecision::Valid
         );
         assert_eq!(
-            verifier.verify(&key_id, SignatureAlgorithmV1::Ed25519, b"tampered", &encoded),
+            verifier.verify(
+                &key_id,
+                SignatureAlgorithmV1::Ed25519,
+                b"tampered",
+                &encoded
+            ),
             SignatureDecision::InvalidSignature
         );
         assert_eq!(
-            verifier.verify(&key_id, SignatureAlgorithmV1::Ed25519, b"payload", "not-hex"),
+            verifier.verify(
+                &key_id,
+                SignatureAlgorithmV1::Ed25519,
+                b"payload",
+                "not-hex"
+            ),
             SignatureDecision::InvalidSignature
         );
     }
