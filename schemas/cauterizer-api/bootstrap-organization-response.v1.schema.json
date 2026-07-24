@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Response body returned for both first execution and exact idempotent retries.",
+  "properties": {
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Created organization."
+    },
+    "owner_member_id": {
+      "description": "Initial owner membership.",
+      "type": "string"
+    },
+    "version": {
+      "description": "Persisted optimistic version; also surfaced as the response `ETag`.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "organization_id",
+    "owner_member_id",
+    "version"
+  ],
+  "title": "BootstrapOrganizationResponseV1",
+  "type": "object"
+}

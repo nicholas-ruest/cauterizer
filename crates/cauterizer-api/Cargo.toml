@@ -13,6 +13,12 @@ layer = "binary"
 
 [dependencies]
 cauterizer-contracts = { version = "0.1.0", path = "../cauterizer-contracts" }
+cauterizer-organization-access = { version = "0.1.0", path = "../contexts/organization-access" }
+cauterizer-syntax = { version = "0.1.0", path = "../cauterizer-syntax" }
+schemars.workspace = true
+serde.workspace = true
+serde_jcs.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

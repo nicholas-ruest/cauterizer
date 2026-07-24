@@ -17,6 +17,9 @@ pub mod s3_artifacts;
 
 /// Content-addressed artifact ports and local adapters.
 pub mod artifacts;
+/// Credential-scoped capability boundary over the CAS artifact store (solver/verifier
+/// negative-permission enforcement).
+pub mod artifact_access;
 /// Cryptographic operation ports and untrusted local adapters.
 pub mod crypto;
 

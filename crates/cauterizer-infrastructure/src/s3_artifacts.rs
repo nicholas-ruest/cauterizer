@@ -563,6 +563,42 @@ mod tests {
     }
 
     #[test]
+    fn server_side_rehash_mismatch_on_read_blocks_the_read() {
+        // Simulates bit-rot or an out-of-band object substitution: the exact
+        // immutable key still resolves, but its bytes no longer hash to the
+        // digest committed alongside the descriptor. `read_verified` must
+        // recompute the digest server-side and fail closed rather than ever
+        // returning corrupted bytes to a caller.
+        let mut store = S3ArtifactStore::new(FakeS3::default());
+        let descriptor = commit(&mut store, b"trustworthy");
+        let authorization = ArtifactReadAuthorization {
+            organization_id: descriptor.metadata.organization_id.clone(),
+            access_domain: AccessDomain::Verifier,
+            maximum_classification: DataClass::RestrictedSecurity,
+        };
+        assert_eq!(
+            store
+                .read_verified(descriptor.digest, &authorization)
+                .unwrap(),
+            b"trustworthy"
+        );
+
+        // Same length as the committed descriptor's size so the corruption is
+        // caught by the digest re-check, not the response-size bound.
+        let mut transport = store.into_inner();
+        transport
+            .objects
+            .insert(committed_key(&descriptor), b"corruptedxx".to_vec());
+        let mut store = S3ArtifactStore::new(transport);
+        store.register_descriptor(descriptor.clone()).unwrap();
+
+        assert_eq!(
+            store.read_verified(descriptor.digest, &authorization),
+            Err(ArtifactError::DigestMismatch)
+        );
+    }
+
+    #[test]
     fn reconciliation_distinguishes_missing_corrupt_size_and_outage() {
         let good_bytes = b"good";
         let descriptor = ArtifactDescriptor {

@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "ActorId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Authenticated human actor syntax reference."
+    },
+    "CausationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Reference to the command or event that caused another fact."
+    },
+    "ContextQualifiedId": {
+      "description": "A canonical `<context>_<opaque>` reference.\n\nContext names are lowercase ASCII slugs. Opaque components are deliberately\nrestricted to lowercase base36-compatible text so comparison is stable\nacross databases, filesystems, and URL encoders.",
+      "type": "string"
+    },
+    "CorrelationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Trace-safe correlation reference spanning one logical request."
+    },
+    "OrganizationId": {
+      "$ref": "#/$defs/ContextQualifiedId",
+      "description": "Organization-scoped syntax reference."
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Request body for `POST /v1/organizations:bootstrap-local`.",
+  "properties": {
+    "causation_id": {
+      "$ref": "#/$defs/CausationId",
+      "description": "Bootstrap command identity."
+    },
+    "correlation_id": {
+      "$ref": "#/$defs/CorrelationId",
+      "description": "Logical request trace."
+    },
+    "organization_id": {
+      "$ref": "#/$defs/OrganizationId",
+      "description": "Explicit local tenant scope; retries must address the same organization."
+    },
+    "organization_name": {
+      "description": "Bounded organization display name.",
+      "type": "string"
+    },
+    "owner_actor_id": {
+      "$ref": "#/$defs/ActorId",
+      "description": "Pre-authenticated human owner reference; no password is created."
+    }
+  },
+  "required": [
+    "organization_id",
+    "organization_name",
+    "owner_actor_id",
+    "correlation_id",
+    "causation_id"
+  ],
+  "title": "BootstrapOrganizationRequestV1",
+  "type": "object"
+}
