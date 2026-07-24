@@ -19,6 +19,35 @@ use std::pin::Pin;
 /// Embedded, checksummed `PostgreSQL` migrations for this adapter.
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
+/// One durable, versioned signing-key trust metadata row (P12), as read back.
+///
+/// Never contains private key bytes. Timestamps are the canonical UTC text
+/// form rather than reparsed [`UtcInstant`]s; this audit-read path does not
+/// currently guarantee sub-second round-trip fidelity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SigningKeyTrustRow {
+    /// Non-secret key identity.
+    pub key_id: String,
+    /// Monotonic version of this key's own trust metadata record.
+    pub metadata_version: i64,
+    /// Purpose-scoped population this key belongs to.
+    pub trust_domain: String,
+    /// Signing algorithm label.
+    pub algorithm: String,
+    /// Trust label recorded alongside this key.
+    pub trust_label: String,
+    /// Earliest instant this key is valid, canonical UTC text.
+    pub not_before: String,
+    /// Latest instant this key is valid, canonical UTC text.
+    pub expires_at: String,
+    /// Lifecycle state label.
+    pub state: String,
+    /// Revocation instant, canonical UTC text, if any.
+    pub revoked_at: Option<String>,
+    /// Revocation reason, if any.
+    pub revocation_reason: Option<String>,
+}
+
 /// One append-only event and its relay-visible outbox identity.
 pub struct PostgresEvent {
     /// Aggregate-local ordering sequence.
@@ -251,6 +280,106 @@ impl PostgresMetadataStore {
     pub async fn migrate(&self) -> Result<(), PostgresError> {
         MIGRATOR.run(&self.pool).await?;
         Ok(())
+    }
+
+    /// Appends one versioned signing-key trust metadata row (P12).
+    ///
+    /// This is a pure audit/durability sink: it never receives or stores
+    /// private key bytes, only the non-secret [`crate::crypto::KeyMetadata`]
+    /// a [`crate::crypto::KeyLifecyclePort`] adapter already computed.
+    /// History is append-only; callers supply a strictly increasing
+    /// `metadata_version` per `key_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable database error, including a duplicate
+    /// `(organization_id, key_id, metadata_version)` or a version number
+    /// outside `PostgreSQL`'s signed range.
+    pub async fn record_signing_key(
+        &self,
+        organization_id: &OrganizationId,
+        metadata: &crate::crypto::KeyMetadata,
+    ) -> Result<(), PostgresError> {
+        let version =
+            i64::try_from(metadata.metadata_version).map_err(|_| PostgresError::NumericRange)?;
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("SELECT set_config('app.organization_id', $1, false)")
+            .bind(organization_id.as_str())
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query(
+            "INSERT INTO signing_key_trust_metadata \
+             (organization_id,key_id,metadata_version,trust_domain,algorithm,trust_label, \
+              not_before,expires_at,state,revoked_at,revocation_reason) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,$8::timestamptz,$9,$10::timestamptz,$11)",
+        )
+        .bind(organization_id.as_str())
+        .bind(metadata.key_id.as_str())
+        .bind(version)
+        .bind(metadata.trust_domain.as_str())
+        .bind(metadata.algorithm.as_str())
+        .bind("untrusted-development")
+        .bind(metadata.not_before.as_str())
+        .bind(metadata.expires_at.as_str())
+        .bind(metadata.state.as_str())
+        .bind(metadata.revoked_at.as_ref().map(UtcInstant::as_str))
+        .bind(metadata.revocation_reason.as_deref())
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Reads the highest-versioned (current) signing-key trust metadata row
+    /// for one tenant-scoped key ID, or `None` if this tenant has never
+    /// recorded that key.
+    ///
+    /// Timestamps are returned as their canonical UTC text form rather than
+    /// reparsed into [`UtcInstant`]; this audit-read path does not currently
+    /// guarantee sub-second round-trip fidelity.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable database error.
+    pub async fn current_signing_key_metadata(
+        &self,
+        organization_id: &OrganizationId,
+        key_id: &ContextQualifiedId,
+    ) -> Result<Option<SigningKeyTrustRow>, PostgresError> {
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("SELECT set_config('app.organization_id', $1, false)")
+            .bind(organization_id.as_str())
+            .execute(&mut *connection)
+            .await?;
+        let row = sqlx::query(
+            "SELECT key_id, metadata_version, trust_domain, algorithm, trust_label, \
+                    to_char(not_before AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS not_before, \
+                    to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS expires_at, \
+                    state, \
+                    to_char(revoked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS revoked_at, \
+                    revocation_reason \
+             FROM signing_key_trust_metadata \
+             WHERE organization_id=$1 AND key_id=$2 \
+             ORDER BY metadata_version DESC LIMIT 1",
+        )
+        .bind(organization_id.as_str())
+        .bind(key_id.as_str())
+        .fetch_optional(&mut *connection)
+        .await?;
+        row.map(|row| {
+            Ok(SigningKeyTrustRow {
+                key_id: row.try_get("key_id")?,
+                metadata_version: row.try_get("metadata_version")?,
+                trust_domain: row.try_get("trust_domain")?,
+                algorithm: row.try_get("algorithm")?,
+                trust_label: row.try_get("trust_label")?,
+                not_before: row.try_get("not_before")?,
+                expires_at: row.try_get("expires_at")?,
+                state: row.try_get("state")?,
+                revoked_at: row.try_get("revoked_at")?,
+                revocation_reason: row.try_get("revocation_reason")?,
+            })
+        })
+        .transpose()
     }
 
     /// Loads live artifact metadata for exact-key object-store reconciliation.
@@ -919,6 +1048,35 @@ mod tests {
     }
 
     #[test]
+    fn signing_key_migration_declares_versioned_append_only_trust_metadata() {
+        let migration = include_str!("../migrations/0003_p12_signing_keys.sql");
+        for required in [
+            "CREATE TABLE signing_key_trust_metadata",
+            "metadata_version bigint NOT NULL CHECK (metadata_version > 0)",
+            "PRIMARY KEY (organization_id, key_id, metadata_version)",
+            "state text NOT NULL CHECK (state IN ('active', 'overlap', 'revoked', 'destroyed'))",
+            "signing_key_revocation_shape",
+            "signing_key_trust_metadata_current",
+            "signing_key_trust_metadata_by_domain",
+            "FORCE ROW LEVEL SECURITY",
+            "CREATE POLICY tenant_isolation",
+        ] {
+            assert!(migration.contains(required), "missing {required}");
+        }
+        // No column in this migration can ever hold private key material.
+        for forbidden in ["secret", "private_key", "signing_key_bytes"] {
+            assert!(
+                !migration.to_lowercase().contains(forbidden),
+                "migration must never declare a private key column: {forbidden}"
+            );
+        }
+        assert!(
+            include_str!("../migrations/0003_p12_signing_keys.down.sql")
+                .contains("DROP TABLE IF EXISTS signing_key_trust_metadata")
+        );
+    }
+
+    #[test]
     fn adapter_sql_declares_nonblocking_claim_and_exact_lease_ownership() {
         let source = include_str!("postgres.rs");
         for required in [
@@ -934,6 +1092,92 @@ mod tests {
                 "missing adapter invariant {required}"
             );
         }
+    }
+
+    #[test]
+    fn adapter_sql_declares_tenant_scoped_versioned_signing_key_persistence() {
+        let source = include_str!("postgres.rs");
+        for required in [
+            "INSERT INTO signing_key_trust_metadata",
+            "SELECT set_config('app.organization_id'",
+            "ORDER BY metadata_version DESC",
+        ] {
+            assert!(
+                source.contains(required),
+                "missing adapter invariant {required}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn signing_key_trust_metadata_round_trips_when_database_is_configured() {
+        let url = match std::env::var("CAUTERIZER_TEST_POSTGRES_URL") {
+            Ok(url) => url,
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_POSTGRES_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_TEST_POSTGRES_URL is required when \
+                     CAUTERIZER_REQUIRE_POSTGRES_TESTS is set: {error}"
+                );
+            }
+            Err(_) => return,
+        };
+        let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.unwrap();
+        let store = PostgresMetadataStore::new(pool.clone());
+        store.migrate().await.unwrap();
+
+        let organization = OrganizationId::new("00000000").unwrap();
+        let key_id =
+            ContextQualifiedId::new("signing-key", &format!("{:0>16x}", rand_suffix())).unwrap();
+        let generated = crate::crypto::KeyMetadata {
+            key_id: key_id.clone(),
+            trust_domain: crate::crypto::TrustDomain::new("isolated-execution-worker"),
+            algorithm: crate::crypto::SigningAlgorithm::Ed25519,
+            not_before: UtcInstant::parse("2026-01-01T00:00:00Z").unwrap(),
+            expires_at: UtcInstant::parse("2026-06-01T00:00:00Z").unwrap(),
+            state: crate::crypto::KeyLifecycleState::Active,
+            revoked_at: None,
+            revocation_reason: None,
+            metadata_version: 1,
+        };
+        store
+            .record_signing_key(&organization, &generated)
+            .await
+            .unwrap();
+
+        let mut revoked = generated.clone();
+        revoked.state = crate::crypto::KeyLifecycleState::Revoked;
+        revoked.revoked_at = Some(UtcInstant::parse("2026-02-01T00:00:00Z").unwrap());
+        revoked.revocation_reason = Some("compromise-drill".into());
+        revoked.metadata_version = 2;
+        store.record_signing_key(&organization, &revoked).await.unwrap();
+
+        let current = store
+            .current_signing_key_metadata(&organization, &key_id)
+            .await
+            .unwrap()
+            .expect("row was just inserted");
+        assert_eq!(current.metadata_version, 2);
+        assert_eq!(current.state, "revoked");
+        assert_eq!(current.revocation_reason.as_deref(), Some("compromise-drill"));
+
+        // A different tenant never observes this key's trust metadata.
+        let other_org = OrganizationId::new("00000001").unwrap();
+        assert!(
+            store
+                .current_signing_key_metadata(&other_org, &key_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    fn rand_suffix() -> u64 {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos()
+            .into()
     }
 
     #[tokio::test]

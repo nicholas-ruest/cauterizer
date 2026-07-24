@@ -21,5 +21,9 @@ pub mod crypto;
 /// Reusable transactional metadata persistence mechanisms.
 pub mod transactional;
 
+/// Wires Isolated Execution's worker-protocol signer through the P12
+/// key-lifecycle port.
+pub mod worker_signing;
+
 /// Identifies this adapter package in diagnostics.
 pub const ADAPTER_PACKAGE: &str = "cauterizer-infrastructure";

@@ -232,8 +232,12 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "cauterizer-contracts",
+ "cauterizer-isolated-execution",
  "cauterizer-syntax",
  "ed25519-dalek",
+ "getrandom 0.2.17",
+ "proptest",
+ "serde_jcs",
  "serde_json",
  "sqlx",
  "tempfile",
