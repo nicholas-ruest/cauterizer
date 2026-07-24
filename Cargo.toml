@@ -5,6 +5,7 @@ members = [
     "crates/adapters/asset-portfolio-postgres",
     "crates/adapters/commercial-entitlements-postgres",
     "crates/adapters/advisory-intake-artifacts",
+    "crates/adapters/advisory-intake-osv",
     "crates/adapters/remediation-runs-postgres",
     "crates/cauterizer-api",
     "crates/cauterizer-cli",

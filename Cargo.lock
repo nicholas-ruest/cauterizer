@@ -148,6 +148,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cauterizer-advisory-intake-osv"
+version = "0.1.0"
+dependencies = [
+ "cauterizer-advisory-intake",
+ "cauterizer-syntax",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cauterizer-api"
 version = "0.1.0"
 dependencies = [
