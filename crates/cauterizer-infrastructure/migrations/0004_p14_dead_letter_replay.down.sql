@@ -1,0 +1,15 @@
+ALTER TABLE delivery_dead_letters
+    DROP CONSTRAINT IF EXISTS delivery_dead_letters_outbox_origin_identity,
+    DROP CONSTRAINT IF EXISTS delivery_dead_letter_source_shape,
+    ALTER COLUMN envelope_digest SET NOT NULL,
+    ALTER COLUMN classification SET NOT NULL,
+    ALTER COLUMN aggregate_sequence SET NOT NULL,
+    ALTER COLUMN aggregate_id SET NOT NULL,
+    ALTER COLUMN aggregate_type SET NOT NULL,
+    ALTER COLUMN schema_major SET NOT NULL,
+    ALTER COLUMN schema_version SET NOT NULL,
+    ALTER COLUMN schema_name SET NOT NULL,
+    ALTER COLUMN producer SET NOT NULL,
+    ALTER COLUMN handler_version SET NOT NULL,
+    DROP COLUMN IF EXISTS outbox_id,
+    DROP COLUMN IF EXISTS source;

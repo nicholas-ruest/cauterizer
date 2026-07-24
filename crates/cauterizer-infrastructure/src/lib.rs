@@ -6,6 +6,8 @@
 
 /// Reliable, tenant-scoped event delivery mechanisms.
 pub mod delivery;
+/// Generic transactional-outbox dispatch loop (claim, handle, ack/retry/dead-letter).
+pub mod dispatcher;
 /// Filesystem content-addressed artifact adapter for local development.
 pub mod filesystem_artifacts;
 /// PostgreSQL 17 transactional metadata adapter and migrations.

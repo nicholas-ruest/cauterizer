@@ -294,6 +294,16 @@ impl ReplayAuthorization {
             justification,
         })
     }
+
+    /// Returns the bounded, non-empty, non-padded justification text.
+    ///
+    /// Exposed so other tenant-scoped replay adapters in this crate (for
+    /// example [`crate::postgres::PostgresMetadataStore::replay_dead_letter`])
+    /// can reuse this type's validation instead of duplicating it.
+    #[must_use]
+    pub fn justification(&self) -> &str {
+        &self.justification
+    }
 }
 
 /// Append-only record of a governed replay attempt.

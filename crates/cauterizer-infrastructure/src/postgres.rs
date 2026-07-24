@@ -228,6 +228,10 @@ pub enum PostgresError {
     UncommittedArtifact,
     /// Stored artifact metadata could not be interpreted safely.
     InvalidArtifactMetadata,
+    /// No open, outbox-origin dead letter matches the replay request.
+    DeadLetterNotFound,
+    /// The dead letter was already resolved by a prior replay.
+    DeadLetterAlreadyResolved,
 }
 
 impl fmt::Display for PostgresError {
@@ -244,6 +248,8 @@ impl fmt::Display for PostgresError {
             Self::InboxSequenceConflict => "inbox_sequence_conflict",
             Self::UncommittedArtifact => "uncommitted_artifact_reference",
             Self::InvalidArtifactMetadata => "invalid_artifact_metadata",
+            Self::DeadLetterNotFound => "dead_letter_not_found",
+            Self::DeadLetterAlreadyResolved => "dead_letter_already_resolved",
         })
     }
 }
@@ -689,6 +695,14 @@ impl PostgresMetadataStore {
 
     /// Moves one exactly leased outbox row to terminal relay failure.
     ///
+    /// Also records a `delivery_dead_letters` ledger row (`source='outbox'`)
+    /// carrying this row's `event_id`/`event`/`attempts`, so
+    /// [`Self::replay_dead_letter`] and `delivery_replay_audit`'s existing
+    /// foreign key have something durable to reference. The dead-letter
+    /// identity is deterministic (`"{outbox_id}#{attempts}"`), so replaying
+    /// and later re-dead-lettering the same row never collides with a prior
+    /// resolved ledger entry.
+    ///
     /// # Errors
     ///
     /// Requires a bounded reason code and the current claim token.
@@ -702,14 +716,139 @@ impl PostgresMetadataStore {
         if !valid_reason_code(reason_code) {
             return Err(PostgresError::InvalidDeliveryBound);
         }
-        self.finish_outbox(
-            organization_id,
-            outbox_id,
-            claim_token,
-            "dead_lettered_at=transaction_timestamp(),terminal_reason_code=$4",
-            Some(reason_code),
+        let mut tx = self.pool.begin().await?;
+        set_tenant(&mut tx, organization_id).await?;
+        let row = sqlx::query(
+            "UPDATE transactional_outbox SET \
+               dead_lettered_at=transaction_timestamp(),terminal_reason_code=$4, \
+               claim_token=NULL,claim_expires_at=NULL \
+             WHERE organization_id=$1 AND outbox_id=$2 AND claim_token=$3 \
+               AND delivered_at IS NULL AND dead_lettered_at IS NULL \
+             RETURNING event_id,event,attempts",
         )
-        .await
+        .bind(organization_id.as_str())
+        .bind(outbox_id.as_str())
+        .bind(claim_token.as_str())
+        .bind(reason_code)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(PostgresError::OutboxClaimLost)?;
+        let event_id: String = row.try_get("event_id")?;
+        let event: Value = row.try_get("event")?;
+        let attempts: i32 = row.try_get("attempts")?;
+        let dead_letter_id = format!("{}#{attempts}", outbox_id.as_str());
+        sqlx::query(
+            "INSERT INTO delivery_dead_letters \
+             (organization_id,dead_letter_id,consumer,event,reason_code,attempts,\
+              source,outbox_id,event_id) \
+             VALUES ($1,$2,$3,$4,$5,$6,'outbox',$7,$8)",
+        )
+        .bind(organization_id.as_str())
+        .bind(&dead_letter_id)
+        .bind("transactional-outbox")
+        .bind(&event)
+        .bind(reason_code)
+        .bind(attempts)
+        .bind(outbox_id.as_str())
+        .bind(&event_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Replays one authorized, previously outbox-dead-lettered event back
+    /// into `transactional_outbox` for redelivery.
+    ///
+    /// Reuses [`crate::delivery::ReplayAuthorization`] rather than a new
+    /// type: it already validates exactly the bounded, non-empty,
+    /// non-padded justification and tenant/actor attribution
+    /// `delivery_replay_audit` requires, and
+    /// [`crate::delivery::ReliableInbox::replay`] uses it for the same
+    /// governed-replay purpose against its in-memory reference model.
+    ///
+    /// Looks up the open `delivery_dead_letters` ledger row `dead_letter_outbox`
+    /// recorded for this `outbox_id`, then in one transaction: reactivates the
+    /// original `transactional_outbox` row (clearing `dead_lettered_at` and
+    /// resetting it immediately claimable), marks the ledger row resolved,
+    /// and records a completed `delivery_replay_audit` row. Reactivating the
+    /// existing row rather than inserting a new one avoids colliding with
+    /// `transactional_outbox`'s `(organization_id, event_id)` uniqueness
+    /// constraint. Only outbox-origin dead letters are replayable through
+    /// this method; consumer/inbox-origin dead-lettering is not wired by this
+    /// prompt (see the module-level P14 notes), so it is treated the same as
+    /// "not found".
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PostgresError::DeadLetterNotFound`] when no open
+    /// outbox-origin dead letter matches, or a stable database error.
+    pub async fn replay_dead_letter(
+        &self,
+        outbox_id: &ContextQualifiedId,
+        authorization: &crate::delivery::ReplayAuthorization,
+        replay_id: &ContextQualifiedId,
+    ) -> Result<(), PostgresError> {
+        let organization_id = &authorization.organization_id;
+        let mut tx = self.pool.begin().await?;
+        set_tenant(&mut tx, organization_id).await?;
+
+        let dead_letter_id: String = sqlx::query_scalar(
+            "SELECT dead_letter_id FROM delivery_dead_letters \
+             WHERE organization_id=$1 AND outbox_id=$2 AND source='outbox' \
+               AND resolved_at IS NULL FOR UPDATE",
+        )
+        .bind(organization_id.as_str())
+        .bind(outbox_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(PostgresError::DeadLetterNotFound)?;
+
+        let reactivated = sqlx::query(
+            "UPDATE transactional_outbox SET \
+               dead_lettered_at=NULL,terminal_reason_code=NULL, \
+               claim_token=NULL,claim_expires_at=NULL,next_attempt_at=transaction_timestamp() \
+             WHERE organization_id=$1 AND outbox_id=$2 AND dead_lettered_at IS NOT NULL",
+        )
+        .bind(organization_id.as_str())
+        .bind(outbox_id.as_str())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if reactivated != 1 {
+            return Err(PostgresError::DeadLetterAlreadyResolved);
+        }
+
+        let resolved = sqlx::query(
+            "UPDATE delivery_dead_letters SET \
+               resolved_at=transaction_timestamp(),resolution_code='replayed' \
+             WHERE organization_id=$1 AND dead_letter_id=$2 AND resolved_at IS NULL",
+        )
+        .bind(organization_id.as_str())
+        .bind(&dead_letter_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if resolved != 1 {
+            return Err(PostgresError::DeadLetterAlreadyResolved);
+        }
+
+        sqlx::query(
+            "INSERT INTO delivery_replay_audit \
+             (organization_id,replay_id,dead_letter_id,actor_id,justification,\
+              requested_at,completed_at,outcome_code) \
+             VALUES ($1,$2,$3,$4,$5,transaction_timestamp(),transaction_timestamp(),'replayed')",
+        )
+        .bind(organization_id.as_str())
+        .bind(replay_id.as_str())
+        .bind(&dead_letter_id)
+        .bind(authorization.actor_id.as_str())
+        .bind(authorization.justification())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn finish_outbox(
@@ -1048,6 +1187,47 @@ mod tests {
     }
 
     #[test]
+    fn dead_letter_replay_requires_actor_and_bounded_justification() {
+        // `delivery_replay_audit` (0002) already shapes every replay record
+        // around an authenticated human actor and a bounded, non-empty,
+        // trimmed justification.
+        let delivery = include_str!("../migrations/0002_delivery_reliability.sql");
+        for required in [
+            "CREATE TABLE delivery_replay_audit",
+            "actor_id text NOT NULL",
+            "justification text NOT NULL CHECK (",
+            "length(justification) BETWEEN 1 AND 512",
+            "justification = btrim(justification)",
+            "FOREIGN KEY (organization_id, dead_letter_id)",
+        ] {
+            assert!(delivery.contains(required), "missing {required}");
+        }
+
+        // 0004 gives outbox-origin dead letters an actual ledger row so that
+        // foreign key has something to reference, without weakening the
+        // actor/justification requirement above.
+        let replay = include_str!("../migrations/0004_p14_dead_letter_replay.sql");
+        for required in [
+            "ADD COLUMN source text NOT NULL DEFAULT 'outbox'",
+            "ADD COLUMN outbox_id text",
+            "delivery_dead_letter_source_shape",
+        ] {
+            assert!(replay.contains(required), "missing {required}");
+        }
+
+        // The adapter only ever constructs the audit row from a validated
+        // `ReplayAuthorization`, never from unauthenticated caller input.
+        let source = include_str!("postgres.rs");
+        for required in [
+            "authorization.actor_id.as_str()",
+            "authorization.justification()",
+            "INSERT INTO delivery_replay_audit",
+        ] {
+            assert!(source.contains(required), "missing adapter invariant {required}");
+        }
+    }
+
+    #[test]
     fn signing_key_migration_declares_versioned_append_only_trust_metadata() {
         let migration = include_str!("../migrations/0003_p12_signing_keys.sql");
         for required in [
@@ -1180,6 +1360,31 @@ mod tests {
             .into()
     }
 
+    /// A fresh, lowercase-hex identity suffix, 8-64 chars wide so it is
+    /// valid everywhere `ContextQualifiedId`/`OrganizationId` opaque
+    /// components are accepted.
+    fn unique_hex_suffix() -> String {
+        format!("{:0>8x}", rand_suffix())
+    }
+
+    /// One randomized identity, generated once and reused for every call
+    /// within a single test-binary invocation.
+    ///
+    /// Every UNIQUE/PRIMARY KEY constraint in these migrations is scoped by
+    /// `organization_id` first, and `mutation`/`inbox_event` share this
+    /// suffix across `organization_id`, `aggregate_id`, `idempotency_key`,
+    /// and event/outbox identifiers. That keeps a single test's several
+    /// calls mutually consistent (same aggregate across repeated
+    /// `mutation(..)` calls, same tenant between `mutation`-driven outbox
+    /// rows and `inbox_event`-driven inbox rows) while guaranteeing the
+    /// whole identity is fresh on every process invocation, so repeated
+    /// runs against a real, non-reset `PostgreSQL` instance never collide
+    /// with a prior run's rows.
+    fn shared_fixture_suffix() -> &'static str {
+        static SUFFIX: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        SUFFIX.get_or_init(unique_hex_suffix)
+    }
+
     #[tokio::test]
     async fn delivery_bounds_fail_before_database_access() {
         let pool = PgPoolOptions::new()
@@ -1212,38 +1417,40 @@ mod tests {
     }
 
     fn mutation(digest_input: &str) -> PostgresMutation {
+        let suffix = shared_fixture_suffix();
         PostgresMutation {
-            organization_id: OrganizationId::new("00000000").unwrap(),
+            organization_id: OrganizationId::new(suffix).unwrap(),
             aggregate_type: "test-aggregate".into(),
-            aggregate_id: ContextQualifiedId::new("test", "00000000").unwrap(),
+            aggregate_id: ContextQualifiedId::new("test", suffix).unwrap(),
             expected_version: None,
             state_schema: SchemaName::parse("dev.cauterizer.test.state").unwrap(),
             state_version: SchemaVersion::parse("1.0.0").unwrap(),
             state: serde_json::json!({"state":"created"}),
             events: vec![PostgresEvent {
                 sequence: AggregateSequence::new(1).unwrap(),
-                event_id: ContextQualifiedId::new("event", "00000000").unwrap(),
+                event_id: ContextQualifiedId::new("event", suffix).unwrap(),
                 schema_name: SchemaName::parse("dev.cauterizer.test.created").unwrap(),
                 schema_version: SchemaVersion::parse("1.0.0").unwrap(),
                 payload: serde_json::json!({"type":"created"}),
                 occurred_at: UtcInstant::parse("2026-07-23T00:00:00Z").unwrap(),
-                correlation_id: CorrelationId::new("00000000").unwrap(),
-                causation_id: CausationId::new("00000000").unwrap(),
-                outbox_id: ContextQualifiedId::new("outbox", "00000000").unwrap(),
+                correlation_id: CorrelationId::new(suffix).unwrap(),
+                causation_id: CausationId::new(suffix).unwrap(),
+                outbox_id: ContextQualifiedId::new("outbox", suffix).unwrap(),
             }],
             command_scope: "test.create".into(),
-            idempotency_key: IdempotencyKey::new("create-00000000").unwrap(),
+            idempotency_key: IdempotencyKey::new(format!("create-{suffix}")).unwrap(),
             request_digest: Sha256Digest::of_bytes(digest_input),
             result_schema: SchemaName::parse("dev.cauterizer.test.result").unwrap(),
-            result: serde_json::json!({"id":"test_00000000"}),
+            result: serde_json::json!({"id": format!("test_{suffix}")}),
             result_expires_at: UtcInstant::parse("2027-07-23T00:00:00Z").unwrap(),
             required_artifacts: Vec::new(),
         }
     }
 
     fn inbox_event(sequence: u64, event_suffix: &str) -> PostgresInboxEvent {
+        let suffix = shared_fixture_suffix();
         PostgresInboxEvent {
-            organization_id: OrganizationId::new("00000000").unwrap(),
+            organization_id: OrganizationId::new(suffix).unwrap(),
             consumer: "remediation-runs".into(),
             handler_version: SchemaVersion::parse("1.0.0").unwrap(),
             producer: "advisory-intake".into(),
@@ -1251,7 +1458,7 @@ mod tests {
             schema_name: SchemaName::parse("dev.cauterizer.advisory.snapshotted").unwrap(),
             schema_version: SchemaVersion::parse("1.0.0").unwrap(),
             aggregate_type: "advisory-record".into(),
-            aggregate_id: ContextQualifiedId::new("advisory", "00000000").unwrap(),
+            aggregate_id: ContextQualifiedId::new("advisory", suffix).unwrap(),
             aggregate_sequence: AggregateSequence::new(sequence).unwrap(),
             classification: DataClass::Internal,
             envelope_digest: Sha256Digest::of_bytes(format!("event-{sequence}")),
@@ -1286,6 +1493,7 @@ mod tests {
             .unwrap();
         let store = PostgresMetadataStore::new(pool.clone());
         store.migrate().await.unwrap();
+        let organization = OrganizationId::new(shared_fixture_suffix()).unwrap();
         let mut invalid_reference = mutation("artifact-reference");
         invalid_reference
             .required_artifacts
@@ -1309,20 +1517,29 @@ mod tests {
             store.execute(mutation("different")).await,
             Err(PostgresError::IdempotencyConflict)
         ));
+        // Scoped by organization_id: other DB-gated tests in this suite run
+        // concurrently against the same database and touch these same
+        // tables under their own tenant. `organization` is a fresh random
+        // identity per test-binary invocation (see `shared_fixture_suffix`),
+        // so it never collides with a prior run's rows either.
         let counts: (i64, i64, i64, i64) = (
-            sqlx::query_scalar("SELECT count(*) FROM aggregate_snapshots")
+            sqlx::query_scalar("SELECT count(*) FROM aggregate_snapshots WHERE organization_id=$1")
+                .bind(organization.as_str())
                 .fetch_one(&pool)
                 .await
                 .unwrap(),
-            sqlx::query_scalar("SELECT count(*) FROM aggregate_events")
+            sqlx::query_scalar("SELECT count(*) FROM aggregate_events WHERE organization_id=$1")
+                .bind(organization.as_str())
                 .fetch_one(&pool)
                 .await
                 .unwrap(),
-            sqlx::query_scalar("SELECT count(*) FROM transactional_outbox")
+            sqlx::query_scalar("SELECT count(*) FROM transactional_outbox WHERE organization_id=$1")
+                .bind(organization.as_str())
                 .fetch_one(&pool)
                 .await
                 .unwrap(),
-            sqlx::query_scalar("SELECT count(*) FROM idempotency_results")
+            sqlx::query_scalar("SELECT count(*) FROM idempotency_results WHERE organization_id=$1")
+                .bind(organization.as_str())
                 .fetch_one(&pool)
                 .await
                 .unwrap(),
@@ -1331,19 +1548,14 @@ mod tests {
 
         let first_token = ContextQualifiedId::new("claim", "00000000").unwrap();
         let claims = store
-            .claim_outbox(
-                &OrganizationId::new("00000000").unwrap(),
-                &first_token,
-                10,
-                30,
-            )
+            .claim_outbox(&organization, &first_token, 10, 30)
             .await
             .unwrap();
         assert_eq!(claims.len(), 1);
         let outbox_id: ContextQualifiedId = claims[0].outbox_id.parse().unwrap();
         store
             .retry_outbox(
-                &OrganizationId::new("00000000").unwrap(),
+                &organization,
                 &outbox_id,
                 &first_token,
                 1,
@@ -1353,37 +1565,25 @@ mod tests {
             .unwrap();
         sqlx::query(
             "UPDATE transactional_outbox SET next_attempt_at=transaction_timestamp() \
-             WHERE organization_id='org_00000000'",
+             WHERE organization_id=$1",
         )
+        .bind(organization.as_str())
         .execute(&pool)
         .await
         .unwrap();
         let second_token = ContextQualifiedId::new("claim", "11111111").unwrap();
         let claims = store
-            .claim_outbox(
-                &OrganizationId::new("00000000").unwrap(),
-                &second_token,
-                10,
-                30,
-            )
+            .claim_outbox(&organization, &second_token, 10, 30)
             .await
             .unwrap();
         assert_eq!(claims[0].attempts, 1);
         store
-            .acknowledge_outbox(
-                &OrganizationId::new("00000000").unwrap(),
-                &outbox_id,
-                &second_token,
-            )
+            .acknowledge_outbox(&organization, &outbox_id, &second_token)
             .await
             .unwrap();
         assert!(matches!(
             store
-                .acknowledge_outbox(
-                    &OrganizationId::new("00000000").unwrap(),
-                    &outbox_id,
-                    &first_token,
-                )
+                .acknowledge_outbox(&organization, &outbox_id, &first_token)
                 .await,
             Err(PostgresError::OutboxClaimLost)
         ));
@@ -1398,7 +1598,7 @@ mod tests {
         );
         assert_eq!(
             store
-                .reconcile_delivery(&OrganizationId::new("00000000").unwrap())
+                .reconcile_delivery(&organization)
                 .await
                 .unwrap()
                 .held_events,
@@ -1426,6 +1626,137 @@ mod tests {
                 .unwrap(),
             InboxOutcome::Duplicate
         );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn dead_letter_outbox_is_replayable_by_an_authorized_actor_when_database_is_configured() {
+        use cauterizer_syntax::identifiers::ActorId;
+
+        let url = match std::env::var("CAUTERIZER_TEST_POSTGRES_URL") {
+            Ok(url) => url,
+            Err(error) if std::env::var_os("CAUTERIZER_REQUIRE_POSTGRES_TESTS").is_some() => {
+                panic!(
+                    "CAUTERIZER_TEST_POSTGRES_URL is required when \
+                     CAUTERIZER_REQUIRE_POSTGRES_TESTS is set: {error}"
+                );
+            }
+            Err(_) => return,
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .unwrap();
+        let store = PostgresMetadataStore::new(pool.clone());
+        store.migrate().await.unwrap();
+
+        // A random suffix independent of `shared_fixture_suffix` (used by
+        // `mutation`'s and `inbox_event`'s defaults for the round-trip
+        // test) so this test's tenant identity is unrelated to, and never
+        // collides with, either that test's identity or a prior run's rows
+        // under this same test's identity.
+        let deadletter_suffix = unique_hex_suffix();
+        let organization = OrganizationId::new(&deadletter_suffix).unwrap();
+        let mut commit = mutation("dead-letter-replay");
+        commit.organization_id = organization.clone();
+        commit.idempotency_key =
+            IdempotencyKey::new(format!("dead-letter-replay-{deadletter_suffix}")).unwrap();
+        assert!(matches!(
+            store.execute(commit).await.unwrap(),
+            PostgresOutcome::Committed { version: 1, .. }
+        ));
+
+        let claim_token = ContextQualifiedId::new("claim", "00000000").unwrap();
+        let claims = store
+            .claim_outbox(&organization, &claim_token, 10, 30)
+            .await
+            .unwrap();
+        assert_eq!(claims.len(), 1);
+        let outbox_id: ContextQualifiedId = claims[0].outbox_id.parse().unwrap();
+
+        store
+            .dead_letter_outbox(&organization, &outbox_id, &claim_token, "handler_poison")
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .reconcile_delivery(&organization)
+                .await
+                .unwrap()
+                .ready_outbox,
+            0
+        );
+
+        // Replay authorized for a different tenant is denied without touching state.
+        let wrong_org_auth = crate::delivery::ReplayAuthorization::new(
+            OrganizationId::new("wrongorg1").unwrap(),
+            ActorId::new("00000000").unwrap(),
+            "reviewed and safe to redeliver",
+        )
+        .unwrap();
+        let replay_id_denied = ContextQualifiedId::new("replay", "00000000").unwrap();
+        assert!(matches!(
+            store
+                .replay_dead_letter(&outbox_id, &wrong_org_auth, &replay_id_denied)
+                .await,
+            Err(PostgresError::DeadLetterNotFound)
+        ));
+
+        // Authorized replay reactivates the row exactly once and is audited.
+        let authorized = crate::delivery::ReplayAuthorization::new(
+            organization.clone(),
+            ActorId::new("00000001").unwrap(),
+            "reviewed and safe to redeliver",
+        )
+        .unwrap();
+        let replay_id = ContextQualifiedId::new("replay", "00000001").unwrap();
+        store
+            .replay_dead_letter(&outbox_id, &authorized, &replay_id)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store
+                .reconcile_delivery(&organization)
+                .await
+                .unwrap()
+                .ready_outbox,
+            1
+        );
+
+        let second_token = ContextQualifiedId::new("claim", "11111111").unwrap();
+        let reclaimed = store
+            .claim_outbox(&organization, &second_token, 10, 30)
+            .await
+            .unwrap();
+        assert_eq!(reclaimed.len(), 1);
+        assert_eq!(reclaimed[0].outbox_id, outbox_id.as_str());
+        store
+            .acknowledge_outbox(&organization, &outbox_id, &second_token)
+            .await
+            .unwrap();
+
+        // Replaying the same (now resolved) dead letter again is rejected.
+        let replay_id_repeat = ContextQualifiedId::new("replay", "00000002").unwrap();
+        assert!(matches!(
+            store
+                .replay_dead_letter(&outbox_id, &authorized, &replay_id_repeat)
+                .await,
+            Err(PostgresError::DeadLetterNotFound)
+        ));
+
+        let audited: (String, bool) = sqlx::query_as(
+            "SELECT actor_id, completed_at IS NOT NULL FROM delivery_replay_audit \
+             WHERE organization_id=$1 AND replay_id=$2",
+        )
+        .bind(organization.as_str())
+        .bind(replay_id.as_str())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(audited.0, "actor_00000001");
+        assert!(audited.1);
     }
 
     #[tokio::test]
