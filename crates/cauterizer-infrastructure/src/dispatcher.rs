@@ -846,4 +846,94 @@ mod tests {
             .count();
         assert_eq!(delivered, 1);
     }
+
+    /// P15 AC-006/AC-029-adjacent local bounded-concurrency proof: many
+    /// worker tasks race the same outbox under contention. This is *not* a
+    /// substitute for the hosted resource-exhaustion (AC-006) or
+    /// billing/quota-race (AC-029) cases the abuse-case matrix requires on a
+    /// real backend — it only proves the in-process claim/ack contract holds
+    /// (each row claimed by exactly one worker, acknowledged exactly once,
+    /// none lost) when dozens of tasks hammer [`FakeDispatchPort`]
+    /// concurrently on a real multi-threaded runtime.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn many_concurrent_workers_claim_disjoint_rows_and_acknowledge_each_event_exactly_once()
+     {
+        const ROWS: usize = 200;
+        const WORKERS: usize = 32;
+
+        let seed = (0..ROWS).map(|index| {
+            (
+                format!("outbox_{index:08}"),
+                format!("event_{index:08}"),
+                serde_json::json!({ "index": index }),
+            )
+        });
+        let port = Arc::new(FakeDispatchPort::new(seed));
+        let organization = organization();
+        let handled_counts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+
+        let mut workers = Vec::with_capacity(WORKERS);
+        for worker in 0..WORKERS {
+            let port = Arc::clone(&port);
+            let organization = organization.clone();
+            let handled_counts = Arc::clone(&handled_counts);
+            workers.push(tokio::spawn(async move {
+                let mut total = DispatchReport::default();
+                loop {
+                    let handled_counts = Arc::clone(&handled_counts);
+                    let claim_token = format!("worker_{worker:04}_pass_{:08}", total.total());
+                    let report = dispatch_batch(
+                        port.as_ref(),
+                        &organization,
+                        &claim_token,
+                        DispatchPolicy::new(3, 30, 3, 1).unwrap(),
+                        move |claim| {
+                            let handled_counts = Arc::clone(&handled_counts);
+                            Box::pin(async move {
+                                *handled_counts
+                                    .lock()
+                                    .unwrap()
+                                    .entry(claim.event_id)
+                                    .or_insert(0) += 1;
+                                Ok(())
+                            })
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    if report.total() == 0 {
+                        break;
+                    }
+                    total.acknowledged += report.acknowledged;
+                    total.retried += report.retried;
+                    total.dead_lettered += report.dead_lettered;
+                }
+                total
+            }));
+        }
+
+        let mut acknowledged_total = 0;
+        for worker in workers {
+            let report = worker.await.unwrap();
+            acknowledged_total += report.acknowledged;
+        }
+
+        assert_eq!(
+            acknowledged_total, ROWS,
+            "every seeded row is claimed and acknowledged exactly once across all workers"
+        );
+        let counts = handled_counts.lock().unwrap();
+        assert_eq!(counts.len(), ROWS, "no event id was lost under contention");
+        assert!(
+            counts.values().all(|&count| count == 1),
+            "no event id was handled more than once under contention: {counts:?}"
+        );
+        for index in 0..ROWS {
+            let outbox_id = format!("outbox_{index:08}");
+            assert!(
+                port.state(&outbox_id).unwrap().delivered,
+                "row {outbox_id} left undelivered"
+            );
+        }
+    }
 }

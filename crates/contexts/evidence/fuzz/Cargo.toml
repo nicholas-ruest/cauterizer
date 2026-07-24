@@ -1,0 +1,23 @@
+[package]
+name = "cauterizer-evidence-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cauterizer-evidence = { path = ".." }
+cauterizer-syntax = { path = "../../../cauterizer-syntax" }
+serde_json = "1.0.151"
+
+[[bin]]
+name = "evidence_statement"
+path = "fuzz_targets/evidence_statement.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

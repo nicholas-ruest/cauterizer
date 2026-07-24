@@ -224,4 +224,102 @@ mod tests {
             assert!(canonicalize_json(input).is_err());
         }
     }
+
+    /// P15 AC-032 adversarial coverage: malformed/oversized/deeply-nested/
+    /// non-UTF-8 input must never panic or hang the parser, and every
+    /// rejection must land on one of [`CanonicalJsonError`]'s three stable
+    /// variants rather than an unwind. This is the actually-runnable
+    /// counterpart to the `patch-proposals`/`evidence` libfuzzer targets,
+    /// which need `cargo-fuzz` and are not guaranteed to be executable in
+    /// every environment.
+    mod adversarial_proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// Confirms a deep-nesting input never panics and, if rejected,
+        /// fails with [`CanonicalJsonError::InvalidJson`] — the variant
+        /// `serde_json`'s built-in recursion-depth bound reports. A crash
+        /// or a different error variant here would mean the depth bound
+        /// stopped applying.
+        fn assert_never_panics_and_fails_closed_if_rejected(input: &[u8]) {
+            match canonicalize_json(input) {
+                Ok(_) | Err(CanonicalJsonError::InvalidJson(_)) => {}
+                Err(other) => panic!(
+                    "deeply nested input was rejected for an unexpected reason: {other:?}"
+                ),
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(256))]
+
+            /// Fully arbitrary bytes, including invalid UTF-8, must never
+            /// panic `canonicalize_json`/`is_canonical` — only ever return
+            /// `Ok` or one of the three stable [`CanonicalJsonError`] variants.
+            #[test]
+            fn arbitrary_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
+                let _ = canonicalize_json(&bytes);
+                let _ = is_canonical(&bytes);
+            }
+
+            /// Arbitrary bytes appended after a valid JSON opener, biasing
+            /// generation toward inputs that look enough like JSON to reach
+            /// deeper into the parser before failing.
+            #[test]
+            fn near_valid_malformed_documents_never_panic(
+                opener in prop::sample::select(vec!["{", "[", "\"", "{\"a\":", "[1,"]),
+                tail in prop::collection::vec(any::<u8>(), 0..256),
+            ) {
+                let mut input = opener.as_bytes().to_vec();
+                input.extend(tail);
+                let _ = canonicalize_json(&input);
+            }
+
+            /// A right-nested array `depth` levels deep. `serde_json`'s
+            /// default recursion limit (128) must reject anything beyond it
+            /// with a stable error rather than overflowing the stack.
+            #[test]
+            fn deeply_nested_arrays_never_panic_and_fail_closed(depth in 0_usize..20_000) {
+                let mut input = String::with_capacity(depth * 2);
+                input.extend(std::iter::repeat_n('[', depth));
+                input.extend(std::iter::repeat_n(']', depth));
+                assert_never_panics_and_fails_closed_if_rejected(input.as_bytes());
+            }
+
+            /// A right-nested object `depth` levels deep, same guard as the
+            /// array case but exercising the map-visitor recursion path.
+            #[test]
+            fn deeply_nested_objects_never_panic_and_fail_closed(depth in 0_usize..20_000) {
+                let mut input = String::new();
+                input.extend(std::iter::repeat_n(r#"{"a":"#, depth));
+                input.push_str("null");
+                input.extend(std::iter::repeat_n('}', depth));
+                assert_never_panics_and_fails_closed_if_rejected(input.as_bytes());
+            }
+
+            /// A wide (not deep) flat array with many siblings — oversized
+            /// rather than recursive — must also complete without panicking.
+            #[test]
+            fn oversized_flat_array_never_panics(count in 0_usize..20_000) {
+                let mut input = String::from("[");
+                for index in 0..count {
+                    if index > 0 {
+                        input.push(',');
+                    }
+                    input.push('1');
+                }
+                input.push(']');
+                let _ = canonicalize_json(input.as_bytes());
+            }
+
+            /// A single oversized string member must also complete without
+            /// panicking, exercising the string/escape scanner on a large
+            /// buffer instead of the structural nesting path.
+            #[test]
+            fn oversized_string_member_never_panics(length in 0_usize..20_000) {
+                let input = format!(r#"{{"a":"{}"}}"#, "x".repeat(length));
+                let _ = canonicalize_json(input.as_bytes());
+            }
+        }
+    }
 }

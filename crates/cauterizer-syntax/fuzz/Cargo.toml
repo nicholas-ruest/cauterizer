@@ -1,0 +1,21 @@
+[package]
+name = "cauterizer-syntax-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cauterizer-syntax = { path = ".." }
+
+[[bin]]
+name = "canonical_json"
+path = "fuzz_targets/canonical_json.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
