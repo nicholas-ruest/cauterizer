@@ -1,0 +1,191 @@
+name: Release
+
+# P20: the closing release-readiness job of ADR-019. Builds release
+# binaries with the pinned toolchain, generates a release SBOM (same
+# anchore/sbom-action pattern as supply-chain.yml), and signs the release
+# bundle with GitHub's native, OIDC/Sigstore-backed build-provenance
+# attestation rather than a long-lived static signing key -- there is no
+# cloud KMS/HSM account for this workspace to provision (see
+# docs/architecture/production-readiness-track.md), and a keyless,
+# short-lived-certificate attestation is the closest least-privilege
+# equivalent available without one. A dedicated admission-verify job then
+# re-downloads the bundle independently and rejects it before anything is
+# treated as releasable if the recomputed checksums or the provenance
+# attestation do not authenticate exactly. Only a tag push creates a (draft,
+# human-promoted) GitHub release; every other trigger stops at admission
+# verification so the signing/verification path itself is exercised on
+# every push without ever auto-publishing.
+#
+# This workflow could not be run end-to-end in the sandbox that authored it:
+# doing so requires a real GitHub Actions run identity (Fulcio/Rekor OIDC
+# exchange) that only exists inside an actual Actions job. What was verified
+# locally: the YAML is well-formed, every action reference is pinned to a
+# full commit SHA (scripts/ci/verify-action-pins.sh), and the underlying
+# sign/verify/tamper-detection logic is proven independently by
+# crates/cauterizer-infrastructure/src/release_admission.rs's test suite,
+# which exercises the same fail-closed pattern (digest mismatch, corrupted
+# signature, edited-after-signing field, revoked key) against this
+# workspace's own SignerPort.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  build:
+    name: Build release artifacts and SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master, 2026-07-22
+        with:
+          toolchain: 1.88.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2, resolved 2026-07-22
+        with:
+          cache-on-failure: false
+          shared-key: release
+
+      - name: Verify action references are immutable
+        run: ./scripts/ci/verify-action-pins.sh
+
+      - name: Build release binaries
+        run: cargo build --release --locked -p cauterizer-cli -p cauterizer-worker -p cauterizer-api
+
+      - name: Stage release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/release/cauterizer-cli dist/cauterizer-cli-linux-amd64
+          cp target/release/cauterizer-worker dist/cauterizer-worker-linux-amd64
+          cp target/release/cauterizer-api dist/cauterizer-api-linux-amd64
+          cp Cargo.lock dist/Cargo.lock
+          rustc -Vv > dist/rustc-version.txt
+          cargo -Vv > dist/cargo-version.txt
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: dist/cauterizer.cdx.json
+          upload-artifact: false
+
+      - name: Compute release manifest checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 90
+
+  provenance:
+    name: Sign artifacts and record build provenance
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: dist
+
+      - name: Attest build provenance for every release artifact
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: "dist/*"
+
+  admission-verify:
+    name: Verify signature and provenance before admission
+    needs: [build, provenance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Download release bundle (independent re-fetch)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: dist
+
+      - name: Reject on any checksum mismatch
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check --strict checksums.txt
+
+      - name: Reject on missing or provenance-mismatched attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for artifact in dist/*; do
+            echo "verifying build provenance for ${artifact}"
+            gh attestation verify "${artifact}" \
+              --repo "${{ github.repository }}" \
+              --predicate-type "https://slsa.dev/provenance/v1"
+          done
+
+  publish:
+    name: Publish draft release (tag pushes only)
+    needs: admission-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: dist
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --draft \
+            --title "${{ github.ref_name }}" \
+            --notes "Automated draft release. Every artifact already passed admission-verify (checksum + gh attestation verify) in this run. Before promoting out of draft, an accountable reviewer must independently re-run: gh attestation verify <file> --repo ${{ github.repository }}."

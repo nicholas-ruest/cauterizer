@@ -15,13 +15,18 @@ pub mod postgres;
 /// S3-compatible, immutable content-addressed artifact adapter.
 pub mod s3_artifacts;
 
-/// Content-addressed artifact ports and local adapters.
-pub mod artifacts;
 /// Credential-scoped capability boundary over the CAS artifact store (solver/verifier
 /// negative-permission enforcement).
 pub mod artifact_access;
+/// Content-addressed artifact ports and local adapters.
+pub mod artifacts;
 /// Cryptographic operation ports and untrusted local adapters.
 pub mod crypto;
+
+/// Release artifact admission verification (P20): sign/verify/tamper
+/// detection logic for a release manifest, independent of any hosted
+/// signing identity or CI runtime.
+pub mod release_admission;
 
 /// Reusable transactional metadata persistence mechanisms.
 pub mod transactional;
