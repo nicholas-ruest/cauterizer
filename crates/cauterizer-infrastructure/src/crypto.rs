@@ -556,6 +556,54 @@ pub trait KeyLifecycleClock: Send + Sync {
     fn now(&self) -> UtcInstant;
 }
 
+/// Deterministic, externally settable clock for downstream integration tests
+/// that must observe key-lifecycle behavior at two different instants against
+/// the same [`UntrustedDevelopmentKeyLifecycle`] — for example, signing
+/// successfully and then confirming rejection after simulated time advances
+/// past a key's expiry. [`UntrustedDevelopmentKeyLifecycle`] deliberately
+/// keeps its injected clock private, so a caller outside this crate cannot
+/// advance time through the adapter itself; this type is the supported way to
+/// do so from a downstream crate's own tests. Never construct it outside test
+/// code: production callers must use [`SystemClock`].
+#[derive(Debug)]
+pub struct SharedFixedClock(Mutex<UtcInstant>);
+
+impl SharedFixedClock {
+    /// Creates a clock fixed at `instant`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `instant` is not a canonical UTC instant.
+    #[must_use]
+    pub fn at(instant: &str) -> Self {
+        Self(Mutex::new(
+            UtcInstant::parse(instant).expect("caller-supplied canonical instant"),
+        ))
+    }
+
+    /// Advances (or rewinds) the clock to `instant`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `instant` is not a canonical UTC instant.
+    pub fn set(&self, instant: &str) {
+        *self.0.lock().expect("clock lock poisoned") =
+            UtcInstant::parse(instant).expect("caller-supplied canonical instant");
+    }
+}
+
+impl KeyLifecycleClock for SharedFixedClock {
+    fn now(&self) -> UtcInstant {
+        self.0.lock().expect("clock lock poisoned").clone()
+    }
+}
+
+impl<T: KeyLifecycleClock + ?Sized> KeyLifecycleClock for &T {
+    fn now(&self) -> UtcInstant {
+        (**self).now()
+    }
+}
+
 /// Real wall-clock time source.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;

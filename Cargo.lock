@@ -216,7 +216,12 @@ dependencies = [
 name = "cauterizer-evidence"
 version = "0.1.0"
 dependencies = [
+ "cauterizer-infrastructure",
  "cauterizer-syntax",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

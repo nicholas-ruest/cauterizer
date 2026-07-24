@@ -9,11 +9,18 @@ repository.workspace = true
 publish.workspace = true
 
 [package.metadata.cauterizer]
-layer = "domain"
+layer = "application"
 context = "evidence"
 
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+cauterizer-infrastructure = { version = "0.1.0", path = "../../cauterizer-infrastructure" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+proptest = { workspace = true }
+tempfile = "3.27.0"
 
 [lints]
 workspace = true
