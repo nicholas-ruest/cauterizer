@@ -17,7 +17,13 @@ use std::future::Future;
 use std::pin::Pin;
 
 /// Embedded, checksummed `PostgreSQL` migrations for this adapter.
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate::Migrator {
+    // Context-owned migrations share one deployment database. Preserve strict
+    // checksum validation for this stream without rejecting versions owned by
+    // another context.
+    ignore_missing: true,
+    ..sqlx::migrate!("./migrations")
+};
 
 /// One durable, versioned signing-key trust metadata row (P12), as read back.
 ///

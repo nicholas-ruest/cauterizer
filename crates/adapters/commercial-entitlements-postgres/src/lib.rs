@@ -14,7 +14,13 @@ use serde_json::Value;
 use sqlx::{PgPool, Row};
 
 /// Context-owned migrations for durable accounts, idempotency, and outbox facts.
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate::Migrator {
+    // Context-owned migrations share one deployment database. Preserve strict
+    // checksum validation for this stream without rejecting versions owned by
+    // another context.
+    ignore_missing: true,
+    ..sqlx::migrate!("./migrations")
+};
 
 /// First execution or exact durable replay.
 #[derive(Clone, Debug, Eq, PartialEq)]
