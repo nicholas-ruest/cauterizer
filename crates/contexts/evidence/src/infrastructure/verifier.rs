@@ -339,8 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn every_signer_port_implementation_in_this_workspace_only_ever_labels_untrusted_development()
-    {
+    fn every_signer_port_implementation_in_this_workspace_only_ever_labels_untrusted_development() {
         // Structural proof for acceptance criterion 3: enumerate every
         // concrete `SignerPort` implementation this workspace defines
         // (there is exactly one family, `UntrustedDevelopmentKeyLifecycle`,

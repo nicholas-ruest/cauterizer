@@ -1,0 +1,142 @@
+name: Daily MetaHarness Darwin flywheel
+
+on:
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+    inputs:
+      generations:
+        description: Darwin generations
+        required: false
+        default: "8"
+        type: string
+      children:
+        description: Children per generation
+        required: false
+        default: "8"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metaharness-daily-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  evolve:
+    name: Evolve, gate, and archive harness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master, 2026-07-22
+        with:
+          toolchain: 1.88.0
+          components: clippy
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2, resolved 2026-07-22
+        with:
+          cache-on-failure: false
+          shared-key: metaharness-daily
+
+      - name: Restore flywheel history
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: .metaharness-flywheel
+          key: metaharness-flywheel-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            metaharness-flywheel-${{ github.ref_name }}-
+
+      - name: Verify immutable action references
+        run: ./scripts/ci/verify-action-pins.sh
+
+      - name: Derive reproducible daily seed
+        id: seed
+        shell: bash
+        run: echo "value=$(date -u +%Y%m%d)" >> "${GITHUB_OUTPUT}"
+
+      - name: Start a collision-free evolution run
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e .metaharness ]]; then
+            mv .metaharness ".metaharness-preexisting-${GITHUB_RUN_ID}"
+          fi
+
+      - name: Run MetaHarness, Darwin, and the flywheel
+        uses: ./.github/actions/cauterizer-metaharness
+        with:
+          generations: ${{ inputs.generations || '8' }}
+          children: ${{ inputs.children || '8' }}
+          concurrency: "2"
+          seed: ${{ steps.seed.outputs.value }}
+
+      - name: Record immutable daily evidence and champion
+        shell: bash
+        env:
+          DAILY_SEED: ${{ steps.seed.outputs.value }}
+        run: |
+          set -euo pipefail
+          run_dir=".metaharness-flywheel/runs/${GITHUB_RUN_ID}"
+          mkdir -p "${run_dir}"
+          cp -a .metaharness/. "${run_dir}/"
+          cp .metaharness-evidence/repository-score.json "${run_dir}/repository-score.json"
+
+          baseline_score=$(jq -r '.[] | select(.variant.id == "baseline") | .score.finalScore' .metaharness/archive.json)
+          winner_score=$(jq -r '.score.finalScore' .metaharness/reports/winner.json)
+          winner_id=$(jq -r '.variant.id' .metaharness/reports/winner.json)
+          promoted_children=$(jq '[.[] | select(.variant.parentId != null and .score.promoted == true)] | length' .metaharness/archive.json)
+
+          jq -n \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg seed "${DAILY_SEED}" \
+            --arg winner_id "${winner_id}" \
+            --argjson baseline_score "${baseline_score}" \
+            --argjson winner_score "${winner_score}" \
+            --argjson promoted_children "${promoted_children}" \
+            '{run_id:$run_id, commit:$commit, seed:$seed, winner_id:$winner_id,
+              baseline_score:$baseline_score, winner_score:$winner_score,
+              improvement:($winner_score-$baseline_score),
+              promoted_children:$promoted_children}' \
+            > "${run_dir}/daily-summary.json"
+
+          mkdir -p .metaharness-flywheel/champions
+          incumbent_score=$(jq -r '.winner_score // -1' .metaharness-flywheel/champion-summary.json 2>/dev/null || echo -1)
+          if awk "BEGIN {exit !(${winner_score} > ${incumbent_score})}"; then
+            champion_dir=".metaharness-flywheel/champions/${GITHUB_RUN_ID}"
+            mkdir -p "${champion_dir}"
+            cp -a "${run_dir}/." "${champion_dir}/"
+            cp "${run_dir}/daily-summary.json" .metaharness-flywheel/champion-summary.json
+          fi
+
+          cat "${run_dir}/daily-summary.json" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload daily evolution evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: metaharness-darwin-${{ github.run_id }}
+          path: |
+            .metaharness/archive.json
+            .metaharness/lineage.json
+            .metaharness/reports/winner.json
+            .metaharness-flywheel/runs/${{ github.run_id }}/daily-summary.json
+            .metaharness-flywheel/runs/${{ github.run_id }}/repository-score.json
+          if-no-files-found: error
+          retention-days: 90

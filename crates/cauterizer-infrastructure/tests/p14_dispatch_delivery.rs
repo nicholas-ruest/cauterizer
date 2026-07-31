@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use cauterizer_infrastructure::delivery::{FailureCode, HandlerFailure};
 use cauterizer_infrastructure::dispatcher::{
-    dispatch_batch, DispatchClaim, DispatchPolicy, HandlerFuture, PostgresDispatchPort,
+    DispatchClaim, DispatchPolicy, HandlerFuture, PostgresDispatchPort, dispatch_batch,
 };
 use cauterizer_infrastructure::postgres::{
     ConsumerEffect, InboxOutcome, PostgresEvent, PostgresInboxEvent, PostgresMetadataStore,
@@ -287,12 +287,19 @@ async fn outbox_dispatch_is_at_least_once_and_orders_only_within_one_aggregate()
         &organization,
         "claim_00000pass1",
         policy,
-        make_handler(store.clone(), Arc::clone(&meta), Arc::clone(&invocation_counts)),
+        make_handler(
+            store.clone(),
+            Arc::clone(&meta),
+            Arc::clone(&invocation_counts),
+        ),
     )
     .await
     .unwrap();
     assert_eq!(report1.acknowledged, 1, "only b1 applies on the first pass");
-    assert_eq!(report1.retried, 2, "a1 (transient) and a2 (held) are retried");
+    assert_eq!(
+        report1.retried, 2,
+        "a1 (transient) and a2 (held) are retried"
+    );
     assert_eq!(report1.dead_lettered, 0);
 
     // (b) Per-aggregate-only ordering: aggregate B's stream is already fully
@@ -323,11 +330,18 @@ async fn outbox_dispatch_is_at_least_once_and_orders_only_within_one_aggregate()
         &organization,
         "claim_00000pass2",
         policy,
-        make_handler(store.clone(), Arc::clone(&meta), Arc::clone(&invocation_counts)),
+        make_handler(
+            store.clone(),
+            Arc::clone(&meta),
+            Arc::clone(&invocation_counts),
+        ),
     )
     .await
     .unwrap();
-    assert_eq!(report2.acknowledged, 2, "a1 and a2 both apply on the second pass");
+    assert_eq!(
+        report2.acknowledged, 2,
+        "a1 and a2 both apply on the second pass"
+    );
     assert_eq!(report2.retried, 0);
     assert_eq!(report2.dead_lettered, 0);
 
@@ -379,5 +393,8 @@ async fn outbox_dispatch_is_at_least_once_and_orders_only_within_one_aggregate()
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(applied_count, 1, "duplicate redelivery did not double-apply");
+    assert_eq!(
+        applied_count, 1,
+        "duplicate redelivery did not double-apply"
+    );
 }

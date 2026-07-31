@@ -11,3 +11,11 @@ skills-lock.json
 
 # Rust build output
 /target/
+
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/

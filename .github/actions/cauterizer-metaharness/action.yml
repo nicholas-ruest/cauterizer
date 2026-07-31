@@ -1,0 +1,63 @@
+name: Cauterizer MetaHarness flywheel
+description: Run bounded Darwin Agent-mode evolution and verify Cauterizer regressions.
+
+inputs:
+  generations:
+    description: Number of Darwin generations.
+    required: false
+    default: "8"
+  children:
+    description: Children evaluated per generation.
+    required: false
+    default: "8"
+  concurrency:
+    description: Maximum concurrent variant evaluations.
+    required: false
+    default: "2"
+  seed:
+    description: Reproducible Darwin seed.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Score repository harness readiness
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p .metaharness-evidence
+        npx --yes metaharness@0.4.2 score . --json \
+          > .metaharness-evidence/repository-score.json
+
+    - name: Verify Rust workspace before evolution
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo check --workspace --locked
+
+    - name: Run Darwin Agent-mode evolution
+      shell: bash
+      env:
+        DARWIN_GENERATIONS: ${{ inputs.generations }}
+        DARWIN_CHILDREN: ${{ inputs.children }}
+        DARWIN_CONCURRENCY: ${{ inputs.concurrency }}
+        DARWIN_SEED: ${{ inputs.seed }}
+      run: |
+        set -euo pipefail
+        npx --yes --package=@metaharness/darwin@0.8.0 \
+          metaharness-darwin evolve . \
+          --sandbox agent \
+          --generations "${DARWIN_GENERATIONS}" \
+          --children "${DARWIN_CHILDREN}" \
+          --concurrency "${DARWIN_CONCURRENCY}" \
+          --seed "${DARWIN_SEED}" \
+          --selection quality-diversity \
+          --crossover \
+          --epistasis
+
+    - name: Verify Rust workspace after evolution
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo test --workspace --locked
+        cargo clippy --workspace --all-targets --locked -- -D warnings

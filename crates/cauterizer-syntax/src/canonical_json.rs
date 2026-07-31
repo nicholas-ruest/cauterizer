@@ -244,9 +244,9 @@ mod tests {
         fn assert_never_panics_and_fails_closed_if_rejected(input: &[u8]) {
             match canonicalize_json(input) {
                 Ok(_) | Err(CanonicalJsonError::InvalidJson(_)) => {}
-                Err(other) => panic!(
-                    "deeply nested input was rejected for an unexpected reason: {other:?}"
-                ),
+                Err(other) => {
+                    panic!("deeply nested input was rejected for an unexpected reason: {other:?}")
+                }
             }
         }
 

@@ -52,7 +52,8 @@ impl HttpResponse {
         Self {
             status: problem.status,
             etag: None,
-            body: serde_json::to_value(problem).expect("ProblemDetails is always JSON-serializable"),
+            body: serde_json::to_value(problem)
+                .expect("ProblemDetails is always JSON-serializable"),
         }
     }
 }

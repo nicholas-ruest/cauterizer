@@ -201,7 +201,10 @@ impl<'a, S: ArtifactStore> ScopedArtifactStore<'a, S> {
     /// # Errors
     ///
     /// Returns [`ArtifactError::Unauthorized`] for an invalid credential.
-    pub fn list(&self, credential: &ArtifactCredential) -> Result<Vec<Sha256Digest>, ArtifactError> {
+    pub fn list(
+        &self,
+        credential: &ArtifactCredential,
+    ) -> Result<Vec<Sha256Digest>, ArtifactError> {
         self.authenticate(credential)?;
         Ok(self
             .index
@@ -321,9 +324,10 @@ mod tests {
         let view = ScopedArtifactStore::new(&store, &index, credential_key(), tenant());
 
         // Enumeration only ever reveals the credential's own domain.
-        assert_eq!(view.list(&solver_credential).unwrap(), vec![
-            solver_descriptor.digest
-        ]);
+        assert_eq!(
+            view.list(&solver_credential).unwrap(),
+            vec![solver_descriptor.digest]
+        );
 
         // Reading a real verifier/evidence digest is indistinguishable from a
         // random guess: both fail closed with the same uniform NotFound.
@@ -378,10 +382,7 @@ mod tests {
             DataClass::RestrictedSecurity,
         );
         tampered.access_domain = AccessDomain::Verifier;
-        assert_eq!(
-            view.list(&tampered),
-            Err(ArtifactError::Unauthorized)
-        );
+        assert_eq!(view.list(&tampered), Err(ArtifactError::Unauthorized));
         assert_eq!(
             view.read(&tampered, descriptor.digest),
             Err(ArtifactError::Unauthorized)
@@ -399,8 +400,11 @@ mod tests {
 
         // A credential minted for a different tenant also fails.
         let other_tenant = OrganizationId::new("11111111").unwrap();
-        let cross_tenant = ArtifactCredentialIssuer::new(other_tenant, credential_key())
-            .issue(AccessDomain::Verifier, workload, DataClass::RestrictedSecurity);
+        let cross_tenant = ArtifactCredentialIssuer::new(other_tenant, credential_key()).issue(
+            AccessDomain::Verifier,
+            workload,
+            DataClass::RestrictedSecurity,
+        );
         assert_eq!(view.list(&cross_tenant), Err(ArtifactError::Unauthorized));
     }
 
@@ -426,6 +430,9 @@ mod tests {
             view.read(&verifier_credential, descriptor.digest).unwrap(),
             b"hidden test oracle"
         );
-        assert_eq!(view.list(&verifier_credential).unwrap(), vec![descriptor.digest]);
+        assert_eq!(
+            view.list(&verifier_credential).unwrap(),
+            vec![descriptor.digest]
+        );
     }
 }
