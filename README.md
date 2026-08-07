@@ -40,6 +40,7 @@ flowchart LR
 
 - [What Cauterizer Is](#-what-cauterizer-is)
 - [What Cauterizer Deliberately Does Not Do](#-what-cauterizer-deliberately-does-not-do)
+- [Ruvnet Projects and Prior Art](#-ruvnet-projects-and-prior-art)
 - [Architecture](#-architecture)
 - [Repository Layout](#-repository-layout)
 - [Getting Started](#-getting-started)
@@ -98,6 +99,37 @@ Per [ADR-025](docs/adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-
 - expose connector credentials or hidden verifier feedback to a solver.
 
 Extending any of the above is treated as a new architectural goal requiring its own threat model and a superseding ADR — never a silent capability creep.
+
+## 🌊 Ruvnet Projects and Prior Art
+
+Cauterizer was built with several Ruvnet projects as direct benchmark inputs,
+design references, or replaceable adapter targets. We acknowledge them here so
+their influence is visible and distinguishable from Cauterizer-owned code:
+
+- [CVE-bench](https://github.com/ruvnet/CVE-bench) supplies the pinned
+  reproduce-and-fix benchmark model and hidden-grader assumptions used by the
+  Verification context. The repository records the fixture source and commit
+  rather than treating benchmark results as proof of real-world vulnerability
+  closure.
+- [Ruflo](https://github.com/ruvnet/ruflo) informed the multi-agent swarm and
+  coarse workflow-orchestration shape used during development. A Ruflo adapter
+  is an optional outer integration; the bounded Rust application services and
+  deterministic local path remain usable without Ruflo.
+- [agentic-flow](https://github.com/ruvnet/agentic-flow) is the model/provider
+  routing reference behind the replaceable Patch Proposals solver port. It is
+  not allowed into the trusted verifier or SCM authority paths.
+- [RuVector](https://github.com/ruvnet/ruvector) and the related
+  [ruDevolution](https://github.com/ruvnet/ruDevolution) analysis concepts are
+  represented as optional Evidence analysis-artifact sources. Their output may
+  improve traceability, but it cannot establish patch correctness or authorize
+  an external mutation.
+
+These projects are deliberately kept behind anti-corruption ports. They are
+not required runtime dependencies of the canonical domain, and their versions,
+licenses, capabilities, network access, and failure behavior must be recorded
+before an adapter is enabled. See [ADR-008](docs/adr/ADR-008-integrate-upstream-tools-through-replaceable-adapters.md)
+for the integration policy and [ADR-025](docs/adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)
+for the human-review delivery boundary.
 
 ## 🏗️ Architecture
 
