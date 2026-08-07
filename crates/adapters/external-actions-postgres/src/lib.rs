@@ -397,8 +397,16 @@ impl PostgresExternalActionRepository {
         .bind(organization_id.as_str())
         .bind(key.as_str())
         .fetch_optional(&mut *transaction)
-        .await?
-        .ok_or(AdapterError::NotFound)?;
+        .await?;
+        // A concurrent cleanup, revocation, or tenant-scoped repair may remove
+        // an otherwise eligible row between scheduler observations. Treat the
+        // absence as not-ready: it is safe, non-mutating, and lets the caller
+        // reconcile from its authoritative delivery index instead of turning a
+        // harmless race into a failed CI/worker run.
+        let Some(row) = row else {
+            transaction.commit().await?;
+            return Ok(ReconciliationClaim::NotReady);
+        };
         let mut delivery: ExternalActionDelivery = serde_json::from_value(row.try_get("delivery")?)
             .map_err(|_| AdapterError::InvalidState)?;
         if !matches!(delivery.status, DeliveryStatus::Unknown) {
