@@ -14,18 +14,40 @@
 </div>
 
 ```mermaid
-flowchart LR
-    ADV[Advisory Intake] -- AdvisorySnapshotted --> RUN[Remediation Runs]
-    RUN -- ExecutionRequested --> EXE[Isolated Execution]
-    RUN -- ProposalRequested --> PATCH[Patch Proposals]
-    EXE -- ExecutionObserved --> VER[Verification]
-    PATCH -- PatchProposed --> VER
-    VER -- CandidateAssessed --> EVI[Evidence]
-    VER -- CandidateAssessed --> RUN
-    EVI -- EvidenceBundleFinalized --> ACT[External Actions]
-    ACT -- governed issue + branch + PR --> SCM[SCM Pull Request]
-    SCM --> HUMAN([Human Review / Merge])
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "18px", "lineColor": "#64748b", "primaryTextColor": "#0f172a"}, "flowchart": {"nodeSpacing": 55, "rankSpacing": 75, "padding": 18}}}%%
+flowchart TB
+    ADV["📥  Advisory Intake"] -->|immutable advisory snapshot| RUN["🧭  Remediation Run"]
+    RUN -->|public source + bounded brief| WORK
+    subgraph WORK["⚙️  Bounded Candidate Work"]
+        direction LR
+        EXE["🛡️  Isolated Execution"]
+        PATCH["🧩  Patch Proposals"]
+    end
+    EXE -->|visible observations| VER["🔍  Independent Hidden Verification"]
+    PATCH -->|candidate patch| VER
+    VER -->|coarse verdict only| EVI["📜  Evidence + Policy"]
+    VER -.->|safe retry feedback only| RUN
+    EVI -->|verified or issue-only outcome| ACT["🔐  Governed External Actions"]
+    ACT -->|issue • remediation branch • commit • PR| SCM["🔗  SCM Pull Request"]
+    SCM --> HUMAN(["👤  Human Review / Merge"])
+
+    classDef source fill:#e0f2fe,stroke:#0369a1,stroke-width:3px,color:#0f172a,font-size:18px;
+    classDef control fill:#ede9fe,stroke:#7c3aed,stroke-width:3px,color:#0f172a,font-size:18px;
+    classDef isolated fill:#fef3c7,stroke:#b45309,stroke-width:3px,color:#0f172a,font-size:18px;
+    classDef trust fill:#dcfce7,stroke:#15803d,stroke-width:3px,color:#0f172a,font-size:18px;
+    classDef delivery fill:#fce7f3,stroke:#be185d,stroke-width:3px,color:#0f172a,font-size:18px;
+    class ADV source;
+    class RUN control;
+    class EXE,PATCH isolated;
+    class VER,EVI trust;
+    class ACT,SCM delivery;
+    class HUMAN control;
 ```
+
+**At a glance:** advisory → bounded repair attempts → independent hidden
+verification → evidence-backed issue/branch/commit/PR → human review. The dashed
+line is the only retry path, and it carries sanitized visible feedback—not
+hidden verifier details.
 
 <div align="center">
 
@@ -102,6 +124,9 @@ Extending any of the above is treated as a new architectural goal requiring its 
 
 ## 🌊 Ruvnet Projects and Prior Art
 
+<details>
+<summary><strong>Projects, roles, and adapter boundaries</strong></summary>
+
 Cauterizer was built with several Ruvnet projects as direct benchmark inputs,
 design references, or replaceable adapter targets. We acknowledge them here so
 their influence is visible and distinguishable from Cauterizer-owned code:
@@ -130,6 +155,8 @@ licenses, capabilities, network access, and failure behavior must be recorded
 before an adapter is enabled. See [ADR-008](docs/adr/ADR-008-integrate-upstream-tools-through-replaceable-adapters.md)
 for the integration policy and [ADR-025](docs/adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)
 for the human-review delivery boundary.
+
+</details>
 
 ## 🏗️ Architecture
 
@@ -260,6 +287,9 @@ cargo run -p cauterizer-cli
 
 ### What is included
 
+<details>
+<summary><strong>Implemented capabilities</strong></summary>
+
 - A bounded agentic repair loop with immutable candidate lineage, attempt,
   compute, time, cost, patch-size, and changed-line limits.
 - Solver-visible build/test feedback that is bounded and redacted, followed by
@@ -287,7 +317,12 @@ cargo run -p cauterizer-cli
   release, deployment, repository administration, protected/default-branch
   writes, or history rewrites.
 
+</details>
+
 ### What you must provide before it works against a real repository
+
+<details>
+<summary><strong>Required production infrastructure, authority, and validation</strong></summary>
 
 1. **PostgreSQL**
    - Provide a reachable production database and run the embedded migrations.
@@ -354,6 +389,8 @@ budgets, and durable artifact/result paths. See the
 [`ADR-025 implementation map`](docs/architecture/adr-025-implementation.md) and
 [`production readiness track`](docs/architecture/production-readiness-track.md)
 for the evidence and remaining environment-specific validation.
+
+</details>
 
 ## 🛠️ Development Workflow
 

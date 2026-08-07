@@ -16,7 +16,13 @@ use sqlx::{PgPool, Row};
 
 const AGGREGATE_TYPE: &str = "remediation_run";
 /// Adapter-owned review-delivery migrations.
-pub static REVIEW_DELIVERY_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+pub static REVIEW_DELIVERY_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate::Migrator {
+    // All context-owned migration streams share one deployment database. Ignore
+    // versions owned by another stream while retaining checksum validation for
+    // this adapter's own migrations.
+    ignore_missing: true,
+    ..sqlx::migrate!("./migrations")
+};
 
 /// `PostgreSQL` review-delivery repository with tenant-local transactions.
 #[derive(Clone)]
