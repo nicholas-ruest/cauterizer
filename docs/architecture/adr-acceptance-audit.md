@@ -4,6 +4,11 @@ Status: P00 implementation baseline complete; ADR acceptance and empirical gates
 Audited: 2026-07-22  
 Scope: ADR-001 through ADR-024, the DDD overview/context map/scaffold, security threat-model scaffold, production-readiness blueprint, decision traceability, and P00 in `.plans/implementation-prompts.md`
 
+> Historical audit note: ADR-025, dated 2026-08-07, supersedes ADR-001's
+> export-only boundary. This audit remains the record of the P00 baseline and
+> does not govern autonomous issue/pull-request delivery. ADR-025's acceptance
+> evidence must be audited separately.
+
 The recommendations in this audit predate the final selections in [platform-decisions.md](platform-decisions.md). Where they differ, the platform decision baseline is authoritative for implementation. In particular, Cauterizer uses PostgreSQL and the S3-compatible artifact-store port in local integration as well as hosted deployments; SQLite is not an implementation target.
 
 ## Acceptance rule

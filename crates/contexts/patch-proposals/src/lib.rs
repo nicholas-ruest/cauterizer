@@ -159,6 +159,11 @@ pub mod domain {
         pub const fn digest(&self) -> Sha256Digest {
             self.digest
         }
+        /// Exact number of changed source lines.
+        #[must_use]
+        pub const fn changed_lines(&self) -> u64 {
+            self.changed_lines
+        }
     }
 
     /// Defensive unified-diff parser and canonicalizer.

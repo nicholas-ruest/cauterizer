@@ -14,7 +14,10 @@ context = "integration-management"
 
 [dependencies]
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
-

@@ -1,11 +1,16 @@
 # ADR-001: Bound the MVP to an Offline Human-Gated Loop
 
-- **Status**: proposed
+- **Status**: superseded by [ADR-025](ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)
 - **Date**: 2026-07-22
 - **Deciders**:
 - **Tags**: scope, safety, governance, mvp
 
 ## Context
+
+> This ADR records the original offline/export-only boundary. ADR-025 supersedes
+> that boundary with autonomous remediation and governed issue/pull-request
+> delivery while retaining a hard prohibition on merge, release, deployment,
+> and production mutation.
 
 The seed vision describes an autonomous cyber-immune system that discovers vulnerabilities, proposes fixes, proves them, and acts. The research found that the repository has no implementation, the proposed dependencies have uneven maturity, and the highest-risk operations involve untrusted code execution and external mutations. Treating broad autonomy as the first milestone would mix discovery, remediation, proof, and publication before their authority boundaries exist.
 
@@ -67,6 +72,5 @@ Any external mutation is a new architectural goal requiring its own threat model
 
 ## Links
 
-- [Deep research](../../.plans/deep-research.md)
-- [Initial goal plan](../../.plans/intial.md)
 - [External Actions context](../ddd/contexts/external-actions.md)
+- Superseded by [ADR-025](ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)

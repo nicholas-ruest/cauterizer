@@ -1,13 +1,13 @@
 # Production Readiness Track
 
-**Status: five open infra/ops placeholders. None are complete. None can be
+**Status: six open infra/ops placeholders. None are complete. None can be
 closed by an autonomous coding session.**
 
 This is the honest close-out of the P12–P20 implementation arc (see
 [`p12-p20-prompt-plan.md`](p12-p20-prompt-plan.md)). Each of P12, P15, P16,
-P18, and P19 individually flagged one of these five placeholders as out of
+P18, and P19 individually flagged five of these placeholders as out of
 reach without real hosted infrastructure and a named external approver. P20
-folds them into one place rather than leaving five separate "flag" sections
+folds them into one place rather than leaving separate "flag" sections
 scattered across prompt-plan history, and records what changed between the
 plan's original guess and what P12–P19 actually shipped — in two cases
 (P16's live acquisition adapter, P19's API crate) the delivered code is
@@ -189,10 +189,44 @@ to.
   `P00-FIXTURE-QUALIFICATION` (both `external_required`, due `P10`) —
   already tracked; cross-referenced here, not re-invented.
 
+## 6. Real SCM installation and GitHub delivery validation (ADR-025)
+
+- **Current state**: the review-only delivery policy, local fake connector,
+  capability-restricted GitHub adapter, Git Data candidate transfer, durable
+  review checkpoints, PostgreSQL External Actions adapter, exact-request
+  idempotency, leased/backed-off ambiguity reconciliation, grant
+  expiry/constraints, global plus installation kill switches, executable
+  production command composition, immutable review plans/resume, generation
+  fencing, command verification, visible feedback, typed receipts, stable-
+  correlation desired-state PATCH, and locked crash-replay-safe checkout
+  publication are implemented. GitHub adapter tests use scripted HTTP, and
+  live database tests are gated by `CAUTERIZER_TEST_ADAPTER_POSTGRES_URL`.
+  No real GitHub App credential or repository is configured, and no test has
+  created a GitHub issue, branch, commit, or pull request.
+- **Implemented evidence**: see
+  [`adr-025-implementation.md`](adr-025-implementation.md). Local tests cover
+  one review chain after visible repair, command verification, issue-only hidden
+  failure, Git Data translation, durable immutable checkpoints and resume,
+  generation fencing, checkout locking/crash replay, forbidden
+  capabilities, replay/concurrency, redaction, tenant/installation mismatch,
+  expiration, resource constraints, kill switches, and fail-closed ambiguous
+  lookup.
+- **Owner-to-be-named**: repository administrator for a disposable validation
+  organization plus an independent security reviewer of the GitHub App
+  permissions and credential boundary.
+- **Exit criteria**: provision a least-privilege GitHub App; run crash/timeout,
+  duplicate webhook, eventual-consistency, stale-head, concurrent-maintainer,
+  revocation, and kill-switch scenarios against a disposable repository;
+  prove that merge, administration, release, package, deployment, and
+  protected-branch operations are unavailable to the credential itself.
+- **Acceptance implication**: until that exercise and named review complete,
+  ADR-025 remains `proposed` and the repository may claim a local/adapter
+  implementation, not validated autonomous GitHub delivery.
+
 ## What this document is not
 
 It is not an ADR, not an approval, and not a schedule commitment. It does
-not mark any of the five items above complete, partially-accepted, or
+not mark any of the six items above complete, partially-accepted, or
 "good enough for now." Each remains blocked on real infrastructure, a named
 external approver, or both, exactly as `p12-p20-prompt-plan.md` originally
 scoped — this document's only job is to record, precisely and after the

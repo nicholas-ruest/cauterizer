@@ -2,14 +2,14 @@
 
 # 🔥 Cauterizer
 
-**Verifiable, human-gated remediation evidence for approved vulnerabilities — with hostile execution, patch generation, and deterministic verification kept strictly apart.**
+**Automated vulnerability remediation delivered as independently verified pull requests for human review.**
 
 [![Rust CI](https://github.com/nicholas-ruest/cauterizer/actions/workflows/ci.yml/badge.svg)](https://github.com/nicholas-ruest/cauterizer/actions/workflows/ci.yml)
 [![Supply Chain](https://github.com/nicholas-ruest/cauterizer/actions/workflows/supply-chain.yml/badge.svg)](https://github.com/nicholas-ruest/cauterizer/actions/workflows/supply-chain.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](rust-toolchain.toml)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](Cargo.toml)
-[![Status: MVP](https://img.shields.io/badge/status-offline--first%20MVP-yellow.svg)](docs/adr/ADR-001-bound-the-mvp-to-an-offline-human-gated-loop.md)
+[![Status: MVP](https://img.shields.io/badge/status-agentic--remediation%20MVP-yellow.svg)](docs/adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)
 
 </div>
 
@@ -23,12 +23,13 @@ flowchart LR
     VER -- CandidateAssessed --> EVI[Evidence]
     VER -- CandidateAssessed --> RUN
     EVI -- EvidenceBundleFinalized --> ACT[External Actions]
-    ACT -- governed export --> HUMAN([Human Approval])
+    ACT -- governed issue + branch + PR --> SCM[SCM Pull Request]
+    SCM --> HUMAN([Human Review / Merge])
 ```
 
 <div align="center">
 
-*A candidate patch never talks to the verifier. The verifier never talks back to the solver. Evidence is signed, immutable, and only a human can authorize an export.*
+*The agent may fix, test, and open a pull request. Hidden verification never becomes solver feedback, and only a human may merge.*
 
 </div>
 
@@ -42,6 +43,7 @@ flowchart LR
 - [Architecture](#-architecture)
 - [Repository Layout](#-repository-layout)
 - [Getting Started](#-getting-started)
+- [Production Activation Requirements](#-production-activation-requirements)
 - [Development Workflow](#-development-workflow)
 - [Security & Trust Model](#-security--trust-model)
 - [Documentation Map](#-documentation-map)
@@ -53,18 +55,18 @@ flowchart LR
 
 ## 🎯 What Cauterizer Is
 
-Cauterizer turns an **approved vulnerability advisory** into **independently verifiable remediation evidence**, without letting hostile execution, probabilistic patch generation, deterministic verification, signing, or external authority contaminate one another.
+Cauterizer turns an **approved vulnerability advisory** into an **independently verified remediation pull request**, without letting hostile execution, probabilistic patch generation, deterministic verification, signing, or external authority contaminate one another.
 
 Given an approved public advisory and an immutable target revision, Cauterizer can:
 
 - ingest and snapshot the advisory into an immutable, provenance-tracked record;
 - reproduce the vulnerable behavior inside an isolated, resource-confined worker;
-- obtain a bounded candidate patch from an explicitly limited solver view;
+- iteratively obtain and repair bounded candidate patches using solver-visible build and test feedback;
 - independently grade the candidate against a hidden verifier oracle;
-- produce a signed, in-toto-compatible evidence bundle binding inputs, process, and verdict;
-- present a redacted result for a human to approve, dry-run, or export.
+- bind the candidate, run, verifier assessment, policy decision, and delivery measurements into immutable evidence records;
+- create or update a deduplicated issue and remediation pull request for human review.
 
-It is built as a Domain-Driven Design workspace of **11 bounded contexts**, governed by **24 accepted/proposed ADRs**, and enforced by a custom architecture-linting crate that fails CI on layering or context-boundary violations — not just on style.
+It is built as a Domain-Driven Design workspace of **11 bounded contexts**, governed by **25 proposed/superseded ADRs**, and enforced by a custom architecture-linting crate that fails CI on layering or context-boundary violations — not just on style.
 
 <details>
 <summary><strong>🧭 Ubiquitous language (click to expand)</strong></summary>
@@ -79,7 +81,7 @@ It is built as a Domain-Driven Design workspace of **11 bounded contexts**, gove
 | **Evaluation** | Verifier-owned facts about applying and testing one candidate |
 | **Verdict** | Deterministic result: `VerifiedForFixture`, `Rejected`, `Inconclusive`, or `NonConformant` |
 | **Evidence Bundle** | Verifiable statement binding exact artifacts, observations, policy, and verdict |
-| **Approval Grant** | Human authorization scoped to a specific eligible evidence digest and action |
+| **External Action Grant** | Installation-time, repository-scoped authority to create issues, remediation branches, commits, and pull requests |
 
 The words **safe**, **fixed**, **proof**, and **approved** are never used unqualified — every claim states its subject and scope (e.g. *"candidate is `VerifiedForFixture`"*, not *"fixed"*).
 
@@ -87,12 +89,13 @@ The words **safe**, **fixed**, **proof**, and **approved** are never used unqual
 
 ## 🚫 What Cauterizer Deliberately Does Not Do
 
-Per [ADR-001](docs/adr/ADR-001-bound-the-mvp-to-an-offline-human-gated-loop.md), the current MVP boundary is an **offline-first, export-only, human-gated loop**. It intentionally will not:
+Per [ADR-025](docs/adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md), the product boundary is **autonomous remediation with human-controlled integration**. It intentionally will not:
 
 - scan or exploit live targets;
-- submit vulnerability reports or create external tickets automatically;
-- merge patches, publish packages, release, or deploy;
-- grant any agent the authority to execute an external mutation without a recorded human `Approval Grant`.
+- merge or approve pull requests;
+- push to protected/default branches or rewrite human-authored history;
+- publish packages, create releases, deploy, or mutate production;
+- expose connector credentials or hidden verifier feedback to a solver.
 
 Extending any of the above is treated as a new architectural goal requiring its own threat model and a superseding ADR — never a silent capability creep.
 
@@ -113,7 +116,7 @@ Extending any of the above is treated as a new architectural goal requiring its 
 | Candidate generation | Supporting | Patch Proposals | Produce bounded candidate patches |
 | Independent patch assessment | **Core** | Verification | Produce narrowly scoped deterministic verdicts |
 | Verifiable claims | **Core** | Evidence | Bind process, inputs, observations, and verdicts |
-| Human-governed handoff | Supporting | External Actions | Authorize and export eligible outcomes |
+| Governed SCM delivery | Supporting | External Actions | Authorize, reconcile, and receipt issues, remediation branches, commits, and pull requests |
 
 Full detail: [DDD overview](docs/ddd/README.md) · [Context map](docs/ddd/context-map.md)
 
@@ -162,7 +165,7 @@ cauterizer/
 │   ├── cauterizer-worker/        # Isolated execution worker
 │   └── architecture-tests/       # CI-enforced dependency/layering gate
 ├── docs/
-│   ├── adr/                      # 24 architecture decision records
+│   ├── adr/                      # 25 architecture decision records
 │   ├── ddd/                      # Domain model, context map, per-context packages
 │   ├── architecture/             # Threat model, data flow, production readiness
 │   ├── development/              # Enforced architecture rules
@@ -216,6 +219,110 @@ cargo run -p cauterizer-cli
 
 </details>
 
+## ⚠️ Production Activation Requirements
+
+> **The remediation machinery is implemented, but it intentionally fails closed
+> until production infrastructure, authority, credentials, and pinned execution
+> images are supplied. A successful local build alone does not make a live
+> installation operational.**
+
+### What is included
+
+- A bounded agentic repair loop with immutable candidate lineage, attempt,
+  compute, time, cost, patch-size, and changed-line limits.
+- Solver-visible build/test feedback that is bounded and redacted, followed by
+  a separate hidden-verification decision that is never returned as solver
+  feedback.
+- OCI-isolated solver, verifier, and visible-check execution using distinct
+  digest-pinned images, non-root users, no network, read-only roots, dropped
+  capabilities, `no-new-privileges`, resource limits, bounded output, and exact
+  argument/environment handling.
+- Candidate artifact storage scoped to organization, run, repository, and
+  installation, with bounded no-follow reads, immutable writes, digest checks,
+  and substitution rejection.
+- Post-verification Git publication with checkout locking, exact patch/path
+  validation, deterministic commits, real Git object identities, crash-safe
+  branch reuse, and exact-identity cleanup.
+- Governed GitHub delivery for issues, remediation branches, Git Data commits,
+  pull requests, and evidence summaries. Stable ownership correlations update
+  Cauterizer-owned issues and pull requests rather than opening duplicates.
+- Durable PostgreSQL grants, action delivery state, immutable review plans,
+  stage checkpoints, typed remote receipts, tenant RLS, generation fencing,
+  reconciliation leases/backoff/exhaustion, restart recovery, and explicit
+  candidate supersession.
+- Versioned trigger, status, cancellation, reconciliation, and CLI contracts.
+- A structural authority boundary that cannot represent merge, approval,
+  release, deployment, repository administration, protected/default-branch
+  writes, or history rewrites.
+
+### What you must provide before it works against a real repository
+
+1. **PostgreSQL**
+   - Provide a reachable production database and run the embedded migrations.
+   - Preinstall the correct organization/repository External Action grant.
+   - Explicitly enable the tenant and installation kill switches; their default
+     is fail-closed.
+   - Configure backups, restore testing, monitoring, and retention.
+
+2. **Rootless OCI execution**
+   - Install the configured absolute OCI runtime path (the production contract
+     is designed around rootless Podman).
+   - Supply separately reviewed solver, verifier, and visible-check images,
+     each pinned with an `@sha256:` digest.
+   - Configure non-root UID:GID values, process/memory/CPU limits, timeouts, and
+     the exact command argument arrays. Shell command strings are not accepted.
+
+3. **GitHub App installation**
+   - Install a least-privilege GitHub App on each allowed organization and
+     repository and expose its token only through the configured secret source.
+   - Grant only the issue, pull-request, comment, Git object, and remediation-ref
+     permissions needed by the workflow. Do not grant merge, administration,
+     release, deployment, or protected/default-branch write authority.
+   - Configure the exact remediation branch prefix and allowed pull-request
+     target. Repository default-branch and effective branch-rule preflight must
+     succeed before any write is attempted.
+
+4. **Solver, verifier, and policy inputs**
+   - Provide the public solver problem, immutable base revision, allowed paths,
+     commands, and all budgets.
+   - Provision verifier-owned hidden inputs and results storage that are not
+     mounted into solver or visible-check containers.
+   - Provide valid verification policy/evidence inputs for the selected fixture
+     or repository. Cauterizer will not accept a caller-supplied hash as proof
+     that verification or signing occurred.
+
+5. **Operational control and validation**
+   - Use an authenticated controller or operator to trigger runs. Replacing a
+     completed candidate requires an explicit prior candidate digest; Cauterizer
+     never infers supersession.
+   - Exercise the gated tests against a real GitHub App and disposable repository,
+     including credential revocation, protected-branch denial, rate limits,
+     ambiguous timeouts, provider search delay, reconciliation, and maintainer
+     races.
+   - Configure secret management/KMS where required, audit retention, alerts,
+     manual-review queues, SLOs, incident procedures, disaster recovery, and
+     named security/operations approvals.
+
+If any required grant, credential, database state, image digest, runtime policy,
+verifier record, branch policy, or ownership binding is absent or inconsistent,
+the production command stops without broadening authority or fabricating a
+successful result. The worker accepts a secret-free JSON configuration; it names
+the PostgreSQL and GitHub-token environment variables rather than containing
+their values:
+
+```bash
+cargo run -p cauterizer-worker -- run --config /absolute/path/automation.json
+```
+
+Set `dry_run` in that configuration while validating an installation. A live run
+also requires the exact organization, preinstalled grant, GitHub installation,
+repository, immutable base revision, remediation source branch, pull-request
+target branch, solver/verifier commands, OCI image digests, allowed paths/tools,
+budgets, and durable artifact/result paths. See the
+[`ADR-025 implementation map`](docs/architecture/adr-025-implementation.md) and
+[`production readiness track`](docs/architecture/production-readiness-track.md)
+for the evidence and remaining environment-specific validation.
+
 ## 🛠️ Development Workflow
 
 ```bash
@@ -258,7 +365,7 @@ This project treats repositories, advisories, patches, builds, tests, fixtures, 
 
 | Resource | Description |
 |---|---|
-| [ADR Index](docs/adr/README.md) | All 24 architecture decision records |
+| [ADR Index](docs/adr/README.md) | All 25 architecture decision records |
 | [DDD Overview](docs/ddd/README.md) | Domain vision, subdomains, ubiquitous language |
 | [Context Map](docs/ddd/context-map.md) | Cross-context relationships and forbidden dependencies |
 | [Architecture Rules](docs/development/architecture-rules.md) | CI-enforced layering and dependency invariants |
@@ -268,14 +375,31 @@ This project treats repositories, advisories, patches, builds, tests, fixtures, 
 
 ## 📊 Project Status
 
-Cauterizer is an **early-stage, offline-first MVP** (~40k lines of Rust across 23 workspace crates) built with a specification-first discipline: every bounded context is documented before it is implemented, and every implemented invariant is backed by an ADR and an enforced test.
+Cauterizer is an **implemented, fail-closed agentic remediation MVP awaiting
+environment-specific production activation**. Its executable worker composes
+candidate generation, OCI-isolated visible feedback, independent hidden
+verification, post-verification Git publication, immutable durable review plans,
+External Actions, and a capability-restricted GitHub connector. Local, real-Git,
+live-PostgreSQL, and scripted-HTTP tests exercise that machinery; this repository
+does not claim that a real GitHub App or production OCI image set has been
+provisioned and approved.
 
 - ✅ Domain model, application facades, and Postgres/OSV adapters for most contexts
 - ✅ Architecture-boundary enforcement, CI quality gates, and supply-chain hardening wired in
 - ✅ Contract-first API layer and content-addressed artifact storage
-- 🚧 Hosted sandbox execution, KMS/HSM-backed signing, multi-zone SLO/DR drills, and hermetic fixture acquisition remain explicit, tracked placeholders pending named infrastructure and external approval — see [`production-readiness-track.md`](docs/architecture/production-readiness-track.md)
+- ✅ Executable agentic repair and review-delivery command, including bounded retries, sanitized visible feedback, isolated hidden verification, immutable plan/resume, generation fencing, issue-only failure, and verified branch/commit/pull-request flows
+- ✅ Digest-pinned OCI isolation for solver, verifier, and visible checks, with separate ephemeral workspaces and no durable artifact/evidence mounts
+- ✅ External Actions policy plus memory and PostgreSQL adapters; live PostgreSQL cases require `CAUTERIZER_TEST_ADAPTER_POSTGRES_URL`
+- ✅ GitHub desired-state issue/PR delivery and Git Data transfer, including repository-policy preflight, stable-correlation PATCH, typed receipts, digest-bound candidate transfer, and remote reconciliation, covered by scripted-HTTP contract tests
+- ✅ Durable immutable review plans/checkpoints, crash-safe zero-solver resume, explicit supersession, derived generation leases/fencing, checkout locking/crash replay, reconciliation leases/backoff/exhaustion, verifier and tenant-bound candidate-artifact bridges, plus remediation API/CLI controls
+- ✅ A composed production fixture covering real Git, visible failure and sanitized retry, one hidden verification, no pre-verification branch, deterministic publication, all five delivery stages, and replay with zero duplicate actions
+- 🚧 No real GitHub App credentials or repository have been exercised; GitHub eventual consistency, provider timeouts, maintainer races, and credential-level negative permissions remain external gates
+- 🚧 Production OCI images/runtime admission, KMS/HSM-backed signing where required, multi-zone SLO/DR drills, and hermetic fixture acquisition remain explicit, tracked gates pending named infrastructure and external approval — see [`production-readiness-track.md`](docs/architecture/production-readiness-track.md)
 
-This project does not mark infrastructure it cannot provision as done. See [`docs/architecture/p12-p20-prompt-plan.md`](docs/architecture/p12-p20-prompt-plan.md) for the honest state of every remaining gap.
+This project does not mark infrastructure it cannot provision as done. See the
+[`ADR-025 implementation map`](docs/architecture/adr-025-implementation.md) and
+[`production-readiness-track.md`](docs/architecture/production-readiness-track.md)
+for the exact boundary between implemented code and external validation.
 
 ## 🤝 Contributing
 

@@ -2,11 +2,15 @@
 #![forbid(unsafe_code)]
 /// Domain model and policies.
 pub mod domain {
+    /// Deterministic candidate assessment policy and verdict vocabulary.
+    pub mod assessment;
     /// Qualification policy and leak-safe descriptors.
     pub mod qualification;
 }
 /// Application use cases and owned ports.
 pub mod application {
+    /// Hidden candidate assessment adapter exposing only a narrow verdict.
+    pub mod assessment;
     /// Solver/verifier artifact firewall and qualification admission.
     pub mod firewall;
 }

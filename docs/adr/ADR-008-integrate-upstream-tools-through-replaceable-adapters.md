@@ -20,11 +20,14 @@ Initial adapter roles are:
 - CVE-Bench: pinned fixture and grader adapter behind the solver/grader firewall;
 - agentic-flow: optional model/provider routing behind the Patch Proposals solver port;
 - ruflo: optional workflow scheduling through coarse idempotent application commands;
+- GitHub/GitLab-compatible SCM providers: capability-bound issue, branch,
+  commit, and pull-request delivery through External Actions and Integration
+  Management under ADR-025;
 - ruDevolution/ruvector: optional analysis artifact provider for Evidence.
 
 Every adapter declares its upstream source/version/commit, license assessment, capabilities, network needs, failure modes, and contract-test fixture. Missing optional adapters produce explicit `Unavailable` outcomes; they never silently weaken verification.
 
-Ruflo and agentic-flow are not correctness dependencies. The deterministic path must remain usable through direct application services with a mock or manual solver. Orchestration has no raw sandbox, verifier-store, signing, approval, or external-write capability.
+Ruflo and agentic-flow are not correctness dependencies. The deterministic path must remain usable through direct application services with a mock or manual solver. Orchestration has no raw sandbox, verifier-store, signing-key, connector-secret, merge, release, deployment, or unrestricted external-write capability. It may request the narrowly scoped, policy-authorized SCM actions defined by ADR-025 through External Actions; it never invokes an SCM SDK or credential directly.
 
 Runtime and physical deployment technology remain undecided. A later ADR will select them after the threat model and sandbox spike; TypeScript affinity alone is insufficient grounds for a security-core choice.
 
@@ -49,9 +52,21 @@ Runtime and physical deployment technology remain undecided. A later ADR will se
 
 ## Validation before acceptance
 
+Current implementation evidence (the ADR remains `proposed`):
+
+| Boundary | Evidence now present | Remaining gate |
+|---|---|---|
+| SCM anti-corruption layer | Provider-neutral `ScmConnector`; fake connector; GitHub adapter with scripted-HTTP contract tests, Git Data transfer, remote reconciliation, and blocking rustls transport | Real GitHub App credentials and repository exercise |
+| Patch/model boundary | `SolverPort`, `RepairCandidateAdapter`, and digest-bound memory/filesystem candidate artifacts | Production model-provider adapter and hosted execution |
+| Verifier boundary | Sealed file input/result store and narrow hidden-verdict bridge | Hosted verifier/sandbox conformance |
+| Coarse orchestration commands | Remediation Runs service plus transport-neutral API handlers and CLI parser | Bound control-plane transport and production worker command wiring |
+| Optional upstream inventory | Deterministic fakes/manual paths remain usable | Real ruflo scheduler, CVE-Bench grader, optional analysis adapter, and real OSV transport remain absent or externally gated |
+
 - Define the minimal port for each MVP dependency.
 - Resolve license and distribution status before pinning or vendoring.
 - Prove the end-to-end path with optional orchestration disabled.
+- Prove the SCM port's negative capability boundary, idempotency, and
+  remote-state reconciliation required by ADR-025.
 
 ## Links
 
@@ -59,3 +74,4 @@ Runtime and physical deployment technology remain undecided. A later ADR will se
 - Depends on [ADR-006](ADR-006-make-remediation-verdicts-deterministic-and-evidence-based.md)
 - Depends on [ADR-007](ADR-007-emit-in-toto-compatible-evidence-bundles.md)
 - [Context map](../ddd/context-map.md)
+- Extended by [ADR-025](ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)

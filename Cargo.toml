@@ -4,9 +4,13 @@ members = [
     "crates/architecture-tests",
     "crates/adapters/asset-portfolio-postgres",
     "crates/adapters/commercial-entitlements-postgres",
+    "crates/adapters/external-actions-postgres",
+    "crates/adapters/integration-management-github",
+    "crates/adapters/git-workspace-publisher",
     "crates/adapters/advisory-intake-artifacts",
     "crates/adapters/advisory-intake-osv",
     "crates/adapters/remediation-runs-postgres",
+    "crates/adapters/patch-proposals-coding-agent",
     "crates/cauterizer-api",
     "crates/cauterizer-cli",
     "crates/cauterizer-contracts",
@@ -47,6 +51,11 @@ tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros"] }
 aes-gcm = "0.10.3"
 ed25519-dalek = "2.2.0"
 url = "2.5.4"
+reqwest = { version = "0.12.22", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+tempfile = "3.23.0"
+base64 = "0.22.1"
+fs2 = "0.4.3"
+libc = "0.2.177"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

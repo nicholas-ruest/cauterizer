@@ -1,9 +1,9 @@
 //! External Actions bounded context.
 #![forbid(unsafe_code)]
-/// Domain model and policies.
-pub mod domain {}
 /// Application use cases and owned ports.
-pub mod application {}
+pub mod application;
+/// Domain model and policies.
+pub mod domain;
 /// Versioned published language.
 pub mod contracts {}
 /// Stable bounded-context name.

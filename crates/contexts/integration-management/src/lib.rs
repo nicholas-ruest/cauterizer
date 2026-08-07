@@ -1,10 +1,12 @@
 //! Integration Management bounded context.
 #![forbid(unsafe_code)]
-/// Domain model and policies.
-pub mod domain {}
-/// Application use cases and owned ports.
-pub mod application {}
+
+/// Application-owned SCM connector port and reference adapter.
+pub mod application;
 /// Versioned published language.
-pub mod contracts {}
+pub mod contracts;
+/// Provider-neutral integration policy and installation grants.
+pub mod domain;
+
 /// Stable bounded-context name.
 pub const CONTEXT_NAME: &str = "integration-management";

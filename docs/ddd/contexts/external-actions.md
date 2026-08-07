@@ -2,60 +2,136 @@
 
 ## Purpose and ownership
 
-Record a human's narrowly scoped authorization over an eligible evidence bundle and produce a redacted dry-run/export artifact. It owns approval semantics, authorization expiry/revocation, export policy, and export receipts.
+Authorize, execute, reconcile, and receipt bounded effects outside Cauterizer.
+For automated remediation this context may create or update repository issues,
+remediation branches, candidate commits, pull requests, and redacted evidence
+summaries under an installation-time grant.
 
-It does not alter advisories, runs, patches, assessments, or evidence; it does not submit, merge, release, or deploy in the MVP.
+It does not alter advisories, runs, patches, assessments, or evidence. It cannot
+merge or approve pull requests, push protected/default branches, administer a
+repository, publish, release, deploy, or mutate production.
 
-## Aggregate
+## Aggregates
 
-### `ActionAuthorization`
+### `ExternalActionGrant`
 
-Identity: `ActionAuthorizationId`; scoped to one action type, evidence digest, destination class, and actor.
+Identity: `ExternalActionGrantId`; scoped to one organization, connector
+installation, destination, repository set, capability set, and authorization
+period.
 
 Invariants:
 
-- Authorization requires an authenticated human actor; an agent or service cannot impersonate approval.
-- The referenced evidence bundle must be finalized, authenticated under policy, and eligible for the requested action.
-- Scope includes exact action, subject/evidence digest, destination class, issue time, and expiry.
-- Missing, expired, revoked, destination-mismatched, or digest-mismatched authorization denies the action.
-- Approval cannot override a `Rejected`, `Inconclusive`, or `NonConformant` verdict.
-- One authorization cannot be widened or reused for a different bundle/action.
-- Export content is generated through a versioned redaction policy and contains no undeclared sensitive material.
-- MVP action type is limited to `CreateDryRunExport`.
+- A repository or organization administrator establishes the grant when the
+  integration is installed; an agent cannot create or widen its own grant.
+- Scope includes exact repositories, permitted action types, destination host,
+  remediation branch prefix, path rules, budgets, issue/PR metadata policy,
+  issue time, and expiry.
+- Missing, expired, revoked, destination-mismatched, repository-mismatched, or
+  capability-mismatched authority denies the action.
+- Merge, approval, protected/default-branch push, force-push, repository
+  administration, publication, release, and deployment are not grantable
+  action types.
+- Grant evaluation happens for every attempted external effect, including
+  retries and reconciliation.
+- A global or installation kill switch denies queued and new writes.
 
-Repository: `ActionAuthorizationRepository`.
+Repository: `ExternalActionGrantRepository`.
+
+### `ExternalActionDelivery`
+
+Identity: `ExternalActionDeliveryId`; deterministically bound to one
+organization, remediation lineage, repository, action type, request digest,
+and intended remote object.
+
+Invariants:
+
+- Delivery requires a currently valid `ExternalActionGrant` and an eligible
+  immutable run/candidate/evidence reference for the requested action.
+- Exact retries return or reconcile the prior result; the same identity with a
+  different request digest is a conflict.
+- Remote state is read and reconciled after ambiguous outcomes before another
+  mutation is attempted.
+- One advisory/repository/remediation lineage maps to one active issue and one
+  active pull request unless an explicit supersession policy says otherwise.
+- Maintainer-authored commits and remote metadata are never overwritten
+  blindly.
+- External text is generated through versioned redaction and injection-safety
+  policies and contains no undeclared sensitive or verifier-hidden material.
+- A pull request describes a proposed remediation. It does not change the
+  verification verdict or claim that the change was merged or deployed.
+
+Repository: `ExternalActionDeliveryRepository`.
 
 ## Value objects
 
-- `HumanActor`, `ActionType`, `ActionScope`, `DestinationClass`
-- `ApprovalIntent`, `AuthorizationPeriod`, `RevocationReason`
-- `ExportPolicyRef`, `RedactionDecision`, `ExportArtifactRef`
-- `AuthorizationReceipt`, `DryRunExportReceipt`
+- `InstallationAuthority`, `RepositoryScope`, `CapabilitySet`
+- `ActionType`, `ActionScope`, `DestinationClass`, `AuthorizationPeriod`
+- `BranchPolicy`, `PathPolicy`, `MetadataPolicy`, `ActionBudget`
+- `RemoteObjectIdentity`, `RemoteRevision`, `DeliveryRequestDigest`
+- `RedactionDecision`, `ReconciliationDecision`, `DeliveryReceipt`
+- `RevocationReason`, `KillSwitchState`
 
 ## Domain services and policies
 
-- `EvidenceEligibilityPolicy`: validates bundle status, verdict, signature, and claim scope.
-- `AuthorizationPolicy`: validates human identity, scope, intent, expiry, and revocation.
-- `ExportRedactionPolicy`: deterministically derives allowed export fields.
+- `ExternalActionAuthorizationPolicy`: evaluates installation authority,
+  tenant, destination, repository, capability, candidate, evidence, expiry,
+  budget, and kill-switch state.
+- `EvidenceEligibilityPolicy`: selects which verdict/evidence state is required
+  for each action. Issue creation may report failure; candidate commit and PR
+  delivery require the configured candidate policy.
+- `DeliveryIdentityPolicy`: deterministically derives issue, branch, and pull
+  request identity for idempotency and deduplication.
+- `ExternalContentPolicy`: derives redacted, injection-safe issue/PR/commit
+  content.
+- `RemoteReconciliationPolicy`: resolves timeout, crash, stale revision, and
+  concurrent-maintainer outcomes without duplicating or overwriting work.
 
 ## Commands and queries
 
-- `RequestActionAuthorization`, `GrantActionAuthorization`, `RevokeActionAuthorization`
-- `CreateDryRunExport`
-- `GetAuthorization`, `ExplainAuthorizationDecision`, `GetExportReceipt`
+- `GrantExternalActions`, `RevokeExternalActions`, `SetExternalActionKillSwitch`
+- `CreateOrUpdateRemediationIssue`
+- `CreateRemediationBranch`
+- `PushCandidateCommit`
+- `CreateOrUpdateRemediationPullRequest`
+- `PostRemediationEvidenceSummary`
+- `ReconcileExternalActionDelivery`
+- `GetExternalActionGrant`, `ExplainExternalActionDecision`,
+  `GetExternalActionDelivery`
 
 ## Domain events
 
-- `ActionAuthorizationRequested`, `ActionAuthorizationGranted`
-- `ActionAuthorizationDenied`, `ActionAuthorizationRevoked`
-- `DryRunExportCreated`, `DryRunExportFailed`
+- `ExternalActionsGranted`, `ExternalActionsRevoked`,
+  `ExternalActionKillSwitchChanged`
+- `ExternalActionRequested`, `ExternalActionAuthorized`,
+  `ExternalActionDenied`
+- `RemediationIssueDelivered`, `RemediationBranchCreated`,
+  `CandidateCommitPushed`, `RemediationPullRequestDelivered`,
+  `EvidenceSummaryPosted`
+- `ExternalActionDeliveryUncertain`, `ExternalActionDeliveryReconciled`,
+  `ExternalActionFailed`
 
-All events carry `ActionAuthorizationId`; grant and export events carry the exact evidence digest and actor identifier.
+All events carry organization, installation, repository, action, request
+digest, correlation/causation lineage, and classification. Successful delivery
+events carry the stable remote identity and remote revision when applicable;
+they never carry connector secrets or Restricted payloads.
 
 ## Published language
 
-Publishes authorization status and redacted export receipts. Private approval evidence and sensitive bundle payloads remain access-controlled.
+Publishes coarse authorization decisions and delivery receipts. Connector
+credentials, provider response bodies, private source, prompts, hidden verifier
+material, and sensitive evidence payloads remain access-controlled.
 
-## Future boundary
+## Human boundary
 
-Adding ticket creation, HackerOne submission, patch merge, release, or deployment requires a new action type only after a dedicated ADR defines destination verification, least-privilege credentials, two-person or equivalent controls, rollback/revocation, and audit obligations. Those capabilities must not be inferred from this context's existence.
+Humans configure or revoke installation authority and review the resulting pull
+request. Cauterizer stops before approval, merge, publication, release, or
+deployment. Adding any of those actions requires a separate ADR; they cannot be
+inferred from connector installation, a verified verdict, or this context's
+existence.
+
+## Governing decisions
+
+- [ADR-010](../../adr/ADR-010-enforce-tenant-isolation-and-zero-trust-authorization.md)
+- [ADR-012](../../adr/ADR-012-use-versioned-events-with-transactional-outbox-and-inbox.md)
+- [ADR-024](../../adr/ADR-024-govern-integrations-plugins-and-webhooks.md)
+- [ADR-025](../../adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)

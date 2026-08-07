@@ -17,6 +17,7 @@ cauterizer-remediation-runs = { version = "0.1.0", path = "../../contexts/remedi
 cauterizer-infrastructure = { version = "0.1.0", path = "../../cauterizer-infrastructure" }
 cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
 serde_json.workspace = true
+serde.workspace = true
 sqlx.workspace = true
 
 [dev-dependencies]

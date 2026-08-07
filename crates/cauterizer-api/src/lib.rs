@@ -42,3 +42,5 @@ pub mod http;
 pub mod organization;
 /// Opaque, offset-based pagination cursor codec reusing `cauterizer_syntax::envelope::Cursor`.
 pub mod pagination;
+/// Transport-neutral remediation control handlers.
+pub mod remediation;

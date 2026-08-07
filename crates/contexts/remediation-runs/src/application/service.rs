@@ -106,6 +106,49 @@ impl<R: RemediationRunRepository<RemediationRun, RunEvent>, Z: RunAuthorizer, U:
         self.audit(a, action, id.as_str(), AuditOutcome::Succeeded)?;
         Ok(result)
     }
+    /// Returns exact tenant-scoped run state after authorization.
+    /// # Errors
+    /// Fails closed on authorization, audit, persistence, or malformed identity.
+    pub fn status(
+        &self,
+        authorization: &AuthorizationRequestContext,
+        id: &RemediationRunId,
+    ) -> Result<(RunState, u64), ApplicationError> {
+        self.guard(authorization, "runs.read", id.as_str())?;
+        let loaded = self
+            .repository
+            .load(&Self::key(authorization, id.as_str())?)?
+            .ok_or(RepositoryError::NotFound)?;
+        self.audit(
+            authorization,
+            "runs.read",
+            id.as_str(),
+            AuditOutcome::Succeeded,
+        )?;
+        Ok((loaded.aggregate.state(), loaded.version))
+    }
+    /// Authorizes and observes a run before an external scheduler attempts reconciliation.
+    /// This grants no connector authority and performs no remote mutation.
+    /// # Errors
+    /// Fails closed on authorization, audit, persistence, or malformed identity.
+    pub fn authorize_reconciliation(
+        &self,
+        authorization: &AuthorizationRequestContext,
+        id: &RemediationRunId,
+    ) -> Result<(RunState, u64), ApplicationError> {
+        self.guard(authorization, "runs.reconcile", id.as_str())?;
+        let loaded = self
+            .repository
+            .load(&Self::key(authorization, id.as_str())?)?
+            .ok_or(RepositoryError::NotFound)?;
+        self.audit(
+            authorization,
+            "runs.reconcile",
+            id.as_str(),
+            AuditOutcome::Succeeded,
+        )?;
+        Ok((loaded.aggregate.state(), loaded.version))
+    }
     /// Applies an authenticated translated owning-context fact through the durable inbox.
     /// # Errors
     /// Rejects envelope substitution, wrong producer/tenant, duplicates with changed payload,

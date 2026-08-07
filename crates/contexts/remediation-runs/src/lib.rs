@@ -4,12 +4,16 @@
 pub mod domain;
 /// Application use cases and owned ports.
 pub mod application {
+    /// Bounded agentic repair orchestration and its strict information-flow ports.
+    pub mod agentic;
     /// Transactional in-memory reference adapters.
     pub mod memory;
     /// Application-owned persistence, inbox, authorization, and audit ports.
     pub mod ports;
     /// Rebuildable tenant-scoped lifecycle projections.
     pub mod projection;
+    /// Durable review-delivery checkpoint aggregate and repository port.
+    pub mod review_delivery;
     /// Authorized direct commands and authenticated owning-context handlers.
     pub mod service;
 }

@@ -1,5 +1,10 @@
 # P00 Decision Record
 
+> Historical baseline: ADR-025 supersedes this record wherever it restricts
+> Cauterizer to export-only operation or forbids governed issue, remediation
+> branch, commit, and pull-request delivery. Its no-merge, no-release, and
+> no-deploy restrictions remain compatible with ADR-025.
+
 Status: complete for implementation; empirical acceptance gates remain phase-bound  
 Date: 2026-07-22  
 Accountable project decider: Nick Ruest, repository owner  

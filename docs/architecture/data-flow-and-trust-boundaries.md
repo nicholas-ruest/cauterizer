@@ -1,15 +1,27 @@
 # Data Flow and Trust Boundaries
 
-Status: P00 executable safety baseline  
-Scope: local/offline, export-only remediation loop; organization-scoped contracts  
-Governing decisions: ADR-001, ADR-003, ADR-004, ADR-005, ADR-007, ADR-010, ADR-011, ADR-013, ADR-015, ADR-018, ADR-020, and ADR-022  
+Status: ADR-025 autonomous-remediation safety baseline
+
+Scope: automated remediation and governed issue/pull-request delivery; human-controlled merge
+
+Governing decisions: ADR-003, ADR-004, ADR-005, ADR-007, ADR-010, ADR-011, ADR-013, ADR-015, ADR-018, ADR-020, ADR-022, ADR-024, and ADR-025
+
 DDD contexts: Organization & Access, Advisory Intake, Remediation Runs, Isolated Execution, Patch Proposals, Verification, Evidence, and External Actions
 
 ## Purpose and claim boundary
 
 This document makes the security boundaries of the first executable platform falsifiable. It is not evidence that a sandbox is secure. A result is conformant only when the selected backend has passed the controls and adversarial tests in this document and the solver/verifier information-flow separation can be demonstrated for that run.
 
-The first deployment is a local, offline-first tool with an explicit networked acquisition step and human-gated export. Local development may use a process or ordinary container backend, but every result from such a backend is labeled `non-conformant` and `untrusted-development`; it cannot support a production safety claim. A hosted backend intended to produce conformant results must use a separately administered, gVisor-class or stronger isolation boundary, separate solver and verifier pools, workload identities, default-deny egress, immutable images, and the adversarial release gate below. Backend selection and residual-risk acceptance remain named P00 decisions; this document does not promote a candidate merely by naming it.
+Cauterizer may autonomously prepare a fix and deliver a deduplicated issue,
+remediation branch, candidate commit, and pull request under an installation-time
+repository grant. Human review remains the merge boundary; merge, publication,
+release, deployment, and production mutation are forbidden. Local development
+may use a process or ordinary container backend, but every result from such a
+backend is labeled `non-conformant` and `untrusted-development`; it cannot
+support a production safety claim. A hosted backend intended to produce
+conformant results must use a separately administered, gVisor-class or stronger
+isolation boundary, separate solver and verifier pools, workload identities,
+default-deny egress, immutable images, and the adversarial release gate below.
 
 ## Data classes
 
@@ -27,14 +39,14 @@ Digests are metadata, not declassification. A digest of confidential or verifier
 
 | Principal | Identity and authority | Explicitly forbidden authority |
 |---|---|---|
-| Human operator/reviewer | Interactive user identity; organization, role, intent, target, expiry, and evidence digest bound to approval | Cannot turn a failed policy decision into success or authorize undeclared external mutation. |
+| Human administrator/reviewer | Installs and revokes repository-scoped connector authority; reviews and may merge through the SCM's own protected workflow | Cannot turn a failed policy decision into success; Cauterizer never exercises the human's merge authority. |
 | Local CLI/control plane | Local user plus organization-scoped application identity; coordinates append-only state | Cannot execute repository code, read hidden payloads, sign as Evidence, or invent observations/verdicts. |
 | Acquisition worker | Per-job short-lived capability for allowlisted sources and quarantine upload | Cannot call solver/verifier stores, signing, approval, or general Internet destinations. |
 | Solver worker/provider adapter | Fresh per-attempt identity limited to the `SolverBrief`, public baseline bundle, and candidate upload | Cannot enumerate verifier resources, hidden digests, verifier telemetry, or receive adaptive hidden-result feedback. |
 | Verifier worker | Fresh per-assessment identity limited to candidate, qualified fixture, hidden test material, and observation upload | Cannot call solver memory/provider, sign evidence, approve/export, or mutate run history. |
 | Evidence assembler | Read-by-digest access to committed eligible descriptors | Cannot compute a verdict or access private key bytes. |
 | Evidence signer | Dedicated workload identity permitted to sign a complete canonical manifest through a key service | Cannot orchestrate, solve, execute, verify, approve, or export. |
-| Export adapter | One-use capability bound to organization, action, destination, approval, and evidence digest | Cannot merge, publish, deploy, create tickets, or alter a bundle in the MVP. |
+| SCM connector | Short-lived capability bound to organization, installation, repository, action, remediation lineage, and candidate/evidence digest | Cannot merge/approve, push protected or default branches, administer repository policy, publish, release, deploy, or alter a bundle. |
 
 Hosted identities are mutually authenticated workload identities with short-lived, audience-bound credentials. Local mode preserves the same logical identities and capability checks even if process isolation cannot establish the hosted claim.
 
@@ -66,7 +78,7 @@ flowchart LR
   EVI["Evidence assembler\ndigest-read identity"]
   KS["Signer + KMS/HSM\nsign-only identity"]
   ES[("Evidence store\nsigned immutable bundle")]
-  EXP["Export adapter\none-use capability"]
+  SCM["SCM connector\ncapability-bound issue/PR delivery"]
 
   H -->|"local IPC/HTTPS; actor + org + idempotency key"| CP
   CP -->|"SQL/TLS; domain events + descriptors"| DB
@@ -86,10 +98,10 @@ flowchart LR
   EVI -->|"local RPC/mTLS; canonical complete manifest digest"| KS
   KS -->|"signature + key/trust metadata"| EVI
   EVI -->|"object API; in-toto statement + redactions"| ES
-  H -->|"approval: actor, intent, target, expiry, evidence digest"| CP
-  CP -->|"exact export capability"| EXP
-  ES -->|"read approved digest"| EXP
-  EXP -->|"filesystem export only"| OUT[("Human-controlled destination")]
+  H -->|"installation grant: repositories, capabilities, expiry"| CP
+  CP -->|"authorized idempotent issue/branch/commit/PR action"| SCM
+  ES -->|"read eligible evidence digest"| SCM
+  SCM -->|"provider API: issue and reviewable pull request"| OUT[("SCM human-review workflow")]
 ```
 
 Local IPC is a Unix-domain socket or loopback connection with peer authentication and restrictive filesystem permissions. Hosted crossings use TLS 1.3 and mutually authenticated workload identities. Artifact APIs authorize organization, exact digest, operation, purpose, and expiry; list access is denied to workers. Every request is schema/version checked, size bounded, deadline and resource bounded, and correlated with a non-secret run/attempt/assessment ID.
@@ -98,14 +110,14 @@ Local IPC is a Unix-domain socket or loopback connection with peer authenticatio
 
 | Boundary | STRIDE risks | Mandatory controls and observable denial |
 |---|---|---|
-| Human -> control plane | spoofed reviewer, approval tampering/replay, repudiation, cross-org disclosure, privilege escalation | Authenticated actor; deny-by-default RBAC/ABAC; approval binds organization/action/target/evidence digest/expiry; append-only audit; replay and mismatched digest return a stable denial reason. |
+| Human -> control plane | spoofed administrator, grant tampering/replay, repudiation, cross-org disclosure, privilege escalation | Authenticated actor; deny-by-default RBAC/ABAC; grant binds organization, installation, repository set, capabilities, policies, and expiry; append-only audit; replay and mismatch return a stable denial reason. |
 | Control plane -> execution plane | forged job, envelope tampering, fabricated receipt, request flooding, worker privilege escalation | Workload authentication; canonical signed or authenticated request; idempotency; resource admission; immutable image identity; workers return observations, never verdicts. |
 | Acquisition -> Internet/quarantine | dependency confusion, redirect escape, malicious archive, mutable inputs, exfiltration | Allowlisted proxy and redirect policy; checksum/signature/license/SBOM checks; archive/path limits; server-side hash; quarantine-to-commit transition; no evaluation from quarantine. |
 | Host -> untrusted worker | sandbox escape, host mount/socket/credential access, fork/disk/log exhaustion | Non-root, no privilege escalation, read-only root, bounded scratch, no host mounts or runtime socket, syscall/capability confinement, cgroup limits, sanitized environment, unconditional cleanup. Local weak backend is always non-conformant. |
 | Solver -> verifier boundary | hidden-test disclosure, digest/equality oracle, cache/log/timing leakage, adaptive probing, grader impersonation | Separate identities/stores/keys/caches/logs/pools; fresh workspace; no verifier list/read API; one-way candidate submission; final assessment only after attempt closes; no conformant persistent solver memory; coarse externally visible failure classes and bounded fixed retry policy. |
 | Worker -> artifact/metadata stores | cross-org IDOR, overwrite, malicious media/schema, forged digest | Per-job exact-digest capability; organization predicate; create-only upload; quarantine validation; server hash/size/media/schema verification; immutable committed descriptor. |
 | Evidence -> signer/key service | manifest substitution, signing incomplete evidence, key theft, signing-oracle abuse | Canonical serialization; completeness/policy check before sign; signer separated from assembler; KMS/HSM operation, not raw key; key ID/trust chain/time; rate/audit controls. |
-| Control plane -> export destination | confused deputy, stale approval, excess disclosure, destination traversal, unauthorized mutation | Export-only allowlist; one-use scoped grant; recheck policy/approval immediately before action; redaction manifest; safe path handling; no connector mutation capability in MVP. |
+| Control plane -> SCM connector | confused deputy, stale/revoked grant, duplicate issue/PR, excess disclosure, branch escape, unauthorized merge or administration | Recheck installation grant and kill switch immediately before action; exact repository/action/candidate binding; branch-prefix and protected-branch denial; redaction manifest; idempotency plus remote-state reconciliation; credentials lack merge, administration, release, and deployment scopes. |
 | Operator/support -> planes | break-glass abuse, secret/log disclosure, audit deletion | No routine support access; JIT scoped access, separation of duties, reason/expiry, immutable customer-visible audit; secrets and restricted verifier data excluded from observability. |
 
 ## Solver/verifier side-channel contract

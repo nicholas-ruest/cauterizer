@@ -1,7 +1,7 @@
 # Cauterizer Context Map
 
 Status: proposed  
-Governing decisions: [ADR-002](../adr/ADR-002-separate-the-system-into-seven-bounded-contexts.md) and [ADR-009](../adr/ADR-009-add-enterprise-platform-bounded-contexts.md)
+Governing decisions: [ADR-002](../adr/ADR-002-separate-the-system-into-seven-bounded-contexts.md), [ADR-009](../adr/ADR-009-add-enterprise-platform-bounded-contexts.md), and [ADR-025](../adr/ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md)
 
 ## Map
 
@@ -42,9 +42,12 @@ External advisory sources
                                            v
                                   [External Actions]
                                            |
-                                 governed connector action
+                      governed issue/branch/commit/PR action
                                            |
                               [Integration Management]
+                                           |
+                                           v
+                                  SCM issue / pull request
 ```
 
 ## Relationships
@@ -65,6 +68,8 @@ External advisory sources
 | Verification | Remediation Runs | Published language | `CandidateAssessed` | Run records status without recomputing verdict |
 | Remediation Runs | Evidence | Published language | `RunRecordSealed` | Evidence consumes complete event-chain reference |
 | Evidence | External Actions | Published language | `EvidenceBundleFinalized` | Only eligible verified bundles can be authorized |
+| Remediation Runs | External Actions | Published language | remediation lineage and delivery request | Delivery cannot fabricate candidate, verdict, or evidence state |
+| External Actions | Integration Management | Customer/supplier | capability-bound SCM action | Every write is grant-scoped, idempotent, redacted, and receipted |
 
 ## Information-flow constraints
 
@@ -73,6 +78,11 @@ External advisory sources
 - Isolated Execution cannot access policy signing keys or approval capabilities.
 - Evidence can read immutable published artifacts by digest but cannot alter their owning aggregates.
 - External Actions cannot alter a verdict or bundle; a new bundle is required after any input changes.
+- External Actions may create or update issues, remediation branches, commits,
+  and pull requests, but cannot approve, merge, publish, release, deploy, push a
+  protected/default branch, or administer repository policy.
+- Integration-time repository authority never gives the solver connector
+  credentials or direct SCM access.
 - Remediation Runs coordinates work but cannot fabricate another context's completion event.
 
 ## Shared kernel

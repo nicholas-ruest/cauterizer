@@ -13,7 +13,25 @@ layer = "binary"
 
 [dependencies]
 cauterizer-contracts = { version = "0.1.0", path = "../cauterizer-contracts" }
+cauterizer-external-actions = { version = "0.1.0", path = "../contexts/external-actions" }
+cauterizer-integration-management = { version = "0.1.0", path = "../contexts/integration-management" }
+cauterizer-remediation-runs = { version = "0.1.0", path = "../contexts/remediation-runs" }
+cauterizer-patch-proposals = { version = "0.1.0", path = "../contexts/patch-proposals" }
+cauterizer-verification = { version = "0.1.0", path = "../contexts/verification" }
+cauterizer-git-workspace-publisher = { version = "0.1.0", path = "../adapters/git-workspace-publisher" }
+cauterizer-patch-proposals-coding-agent = { version = "0.1.0", path = "../adapters/patch-proposals-coding-agent" }
+cauterizer-remediation-runs-postgres = { version = "0.1.0", path = "../adapters/remediation-runs-postgres" }
+cauterizer-syntax = { version = "0.1.0", path = "../cauterizer-syntax" }
+cauterizer-external-actions-postgres = { version = "0.1.0", path = "../adapters/external-actions-postgres" }
+cauterizer-integration-management-github = { version = "0.1.0", path = "../adapters/integration-management-github" }
+sqlx.workspace = true
+tokio.workspace = true
+tempfile.workspace = true
+libc.workspace = true
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_jcs.workspace = true
 
 [lints]
 workspace = true
-

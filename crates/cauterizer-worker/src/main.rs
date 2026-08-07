@@ -16,8 +16,8 @@
 #![forbid(unsafe_code)]
 
 fn main() {
-    println!(
-        "Cauterizer worker ({})",
-        cauterizer_contracts::SCHEMA_NAMESPACE
-    );
+    if let Err(error) = cauterizer_worker::command::dispatch(std::env::args().skip(1)) {
+        eprintln!("cauterizer worker failed: {error}");
+        std::process::exit(2);
+    }
 }

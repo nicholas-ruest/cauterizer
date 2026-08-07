@@ -14,7 +14,8 @@
 | Model/manual candidate generation | Patch Proposals | 005, 008, 023 |
 | Fixture qualification and verdict | Verification | 005, 006, 022 |
 | Attestation and offline verification | Evidence | 007, 013, 015, 021 |
-| Human approval and external mutation | External Actions | 001, 010, 024 |
+| Governed issue, remediation branch, commit, and pull-request delivery | External Actions | 010, 012, 024, 025 |
+| Human review and merge boundary | External Actions | 025 |
 
 ## Cross-cutting quality ownership
 

@@ -1,0 +1,25 @@
+[package]
+name = "cauterizer-patch-proposals-coding-agent"
+description = "Provider-neutral process adapter for coding-agent patch proposals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[package.metadata.cauterizer]
+layer = "infrastructure"
+context = "patch-proposals"
+
+[dependencies]
+cauterizer-patch-proposals = { version = "0.1.0", path = "../../contexts/patch-proposals" }
+cauterizer-syntax = { version = "0.1.0", path = "../../cauterizer-syntax" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

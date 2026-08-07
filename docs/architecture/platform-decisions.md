@@ -7,6 +7,12 @@ Required hosted-production reviewers: platform engineering, security architectur
 
 This record resolves the implementation-affecting choices needed by P01 through P20 without changing the status of an ADR. It is subordinate to ADR-001 through ADR-024. A conflict is resolved in favor of the ADR until an accountable decider amends that ADR. Product code must not silently substitute another product or algorithm.
 
+> Supersession note: ADR-025 now governs product scope and external-action
+> authority. It replaces this baseline's export-only/per-action-human-approval
+> rules with installation-time authority for bounded issue, remediation branch,
+> commit, and pull-request delivery. The prohibitions on merge, publication,
+> release, deployment, and production mutation remain in force.
+
 ## Scope and authority
 
 The first deployment is a single-operator, local/offline tool. Its contracts remain organization-scoped so the same trusted core can later run in a multi-tenant control plane. It may acquire an explicitly approved public source, execute a pinned public fixture, accept a manual or bounded solver patch, verify it independently, sign an evidence bundle with a development identity, and create a redacted dry-run export.

@@ -1,6 +1,7 @@
 # Architecture Decision Record Index
 
-All records are dated 2026-07-22 and initially have status `proposed`.
+ADRs 001–024 are dated 2026-07-22 and were initially proposed. ADR-025 was
+added on 2026-08-07 and supersedes ADR-001's export-only product boundary.
 
 | ID | Decision | Depends on |
 |---|---|---|
@@ -28,6 +29,7 @@ All records are dated 2026-07-22 and initially have status `proposed`.
 | [ADR-022](ADR-022-adopt-risk-based-verification-and-release-gates.md) | Adopt risk-based verification and release gates | ADR-005, ADR-019 |
 | [ADR-023](ADR-023-enforce-entitlements-quotas-and-auditable-usage.md) | Enforce entitlements, quotas, and auditable usage | ADR-009, ADR-012 |
 | [ADR-024](ADR-024-govern-integrations-plugins-and-webhooks.md) | Govern integrations, plugins, and webhooks | ADR-008, ADR-015 |
+| [ADR-025](ADR-025-automate-remediation-and-deliver-reviewable-pull-requests.md) | Automate remediation and deliver reviewable pull requests | ADR-003, ADR-005, ADR-006, ADR-008, ADR-010, ADR-012, ADR-024 |
 
 ## Status policy
 
